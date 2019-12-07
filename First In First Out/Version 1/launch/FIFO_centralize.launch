@@ -1,0 +1,4 @@
+<launch>
+    <!-- turtlebot3_pointop_key already has its own built in velocity smoother -->
+    <node pkg="turtlebot3_gazebo" type="FIFO_centralize.py" name="centercontrol" output="screen"></node>
+</launch>
