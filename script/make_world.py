@@ -41,16 +41,11 @@ for i in range(num):
             pos_x.append(pos_x[3])
             pos_y.append(pos_y[i - 4] + 0.5)
 
-    file_input += "\t<arg name='{0}_tb3_x_pos' default='{1}' />\n".format(
-        i, pos_x[i])
-    file_input += "\t<arg name='{0}_tb3_y_pos' default='{1}' />\n".format(
-        i, pos_y[i])
-    file_input += "\t<arg name='{0}_tb3_z_pos' default='{1}' />\n".format(
-        i, pos_z)
-    file_input += "\t<arg name='{0}_tb3_yaw' default='{1}' />\n".format(
-        i, pos_yaw[i % 4])
-    file_input += "\t<arg name='{0}_tb3_pitch' default='{1}' />\n".format(
-        i, pos_pitch)
+    file_input += "\t<arg name='{0}_tb3_x_pos' default='{1}' />\n".format(i, pos_x[i])
+    file_input += "\t<arg name='{0}_tb3_y_pos' default='{1}' />\n".format(i, pos_y[i])
+    file_input += "\t<arg name='{0}_tb3_z_pos' default='{1}' />\n".format(i, pos_z)
+    file_input += "\t<arg name='{0}_tb3_yaw' default='{1}' />\n".format(i, pos_yaw[i % 4])
+    file_input += "\t<arg name='{0}_tb3_pitch' default='{1}' />\n".format(i, pos_pitch)
     file_input += "\n\n"
 
 file_input += "\t<include file='$(find gazebo_ros)/launch/empty_world.launch'>\n"
