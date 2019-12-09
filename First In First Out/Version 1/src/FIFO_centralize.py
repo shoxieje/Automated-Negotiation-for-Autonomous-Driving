@@ -31,6 +31,7 @@ class IntersectionAgent:
         self.speed = [0.0] * self.total_robots
         self.direction = [''] * self.total_robots
         self.command = [None] * self.total_robots
+        self.position = [None] * self.total_robots
 
         # init centralize
         rospy.loginfo('Center Control Available')
@@ -43,8 +44,10 @@ class IntersectionAgent:
         for i in range(self.total_robots):
             self.odom = rospy.Subscriber('/tb3_' + str(i) + '/odom', Odometry, self.callback_odom, (i))
             self.cmd_vel = rospy.Subscriber('/tb3_' + str(i) + '/cmd_vel', Twist, self.callback_cmd, (i))
-            self.position = rospy.Subscriber('/tb3_' + str(i) + '/position', String, self.callback_position, (i))
             self.command[i] = rospy.Publisher('tb3_' + str(i) + '_command', String, queue_size=5)
+            # get directions
+            self.position[i] = rospy.wait_for_message('/tb3_' + str(i) + '/position', String)
+            self.direction[i] = self.position[i].data
 
         # store current distance
         self.current_dist = [0.0] * self.total_robots
@@ -54,10 +57,6 @@ class IntersectionAgent:
 
         # active queue represent the priority order
         self.active_queue = []
-        
-        # waiting for the signal coming from the robots
-        while '' in self.direction:
-            pass
 
         # represent the state of centralize model (init state is moving for all robots)
         self.state = [types.MOVING] * self.total_robots
@@ -93,7 +92,6 @@ class IntersectionAgent:
                 self.command[i].publish(self.state[i])
 
             print(self.state)
-            # print(self.added_to_queue)
             self.rate.sleep()
 
 
@@ -109,9 +107,6 @@ class IntersectionAgent:
 
     def callback_cmd(self, msg, args):
         self.speed[args] = msg.linear.x
-
-    def callback_position(self, msg, args):
-        self.direction[args] = msg.data
 
 
 
