@@ -1,4 +1,4 @@
-# Automated Negotiation for Autonous Driving Project
+# Automated Negotiation for Autonomous Driving Project
 
 ## Project Description
 Over the last decade, research on autonomous vehicles (AVs) has made revolutionary
