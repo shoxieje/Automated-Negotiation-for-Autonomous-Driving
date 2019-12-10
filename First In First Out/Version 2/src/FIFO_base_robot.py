@@ -114,7 +114,13 @@ class Run_Node(Data):
                 self.signal = types.MOVING
                 self.self_command.publish(types.MOVING)
             
-            self.choose_status(self.signal)
+            if self.signal == types.STOP:
+                self.Stop()
+            else:
+                self.Start()
+            
+            #! choose_status is not working
+            # self.choose_status(self.signal)
             
 
     def choose_status(self, x):
