@@ -114,22 +114,19 @@ class Run_Node(Data):
                 self.signal = types.MOVING
                 self.self_command.publish(types.MOVING)
             
-            if self.signal == types.STOP:
-                self.Stop()
-            else:
-                self.Start()
-            
-            #! choose_status is not working
-            # self.choose_status(self.signal)
-            
+            # * choose_status is working
+            self.choose_status(self.signal)
+
 
     def choose_status(self, x):
-        return {
-            types.MOVING: self.Start(),
-            types.ENTER_INTERSECTION: self.Enter_intersection(),
-            types.PASS_INTERSECTION: self.Pass_intersection(),
-            types.STOP: self.Stop()
-        }.get(x, types.STOP)
+        dispatcher = {
+            types.MOVING: self.Start,
+            types.ENTER_INTERSECTION: self.Enter_intersection,
+            types.PASS_INTERSECTION: self.Pass_intersection,
+            types.STOP: self.Stop,
+            '': self.Stop
+        }
+        return dispatcher[x]()
 
     # calculate the direction
     def calc_direction(self, start, end):
