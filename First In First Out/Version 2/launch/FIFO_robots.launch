@@ -1,0 +1,10 @@
+<launch>
+    <node pkg="turtlebot3_gazebo" type="FIFO_first_robot.py" name="tb3_0" output="screen"></node>
+    <node pkg="turtlebot3_gazebo" type="FIFO_second_robot.py" name="tb3_1" output="screen"></node>
+    <node pkg="turtlebot3_gazebo" type="FIFO_third_robot.py" name="tb3_2" output="screen"></node>
+    <node pkg="turtlebot3_gazebo" type="FIFO_fourth_robot.py" name="tb3_3" output="screen"></node>
+    <node pkg="turtlebot3_gazebo" type="FIFO_fifth_robot.py" name="tb3_4" output="screen"></node>
+    <node pkg="turtlebot3_gazebo" type="FIFO_sixth_robot.py" name="tb3_5" output="screen"></node>
+    <node pkg="turtlebot3_gazebo" type="FIFO_seventh_robot.py" name="tb3_6" output="screen"></node>
+    <node pkg="turtlebot3_gazebo" type="FIFO_eighth_robot.py" name="tb3_7" output="screen"></node>
+</launch>
