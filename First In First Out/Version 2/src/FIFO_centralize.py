@@ -40,7 +40,7 @@ class IntersectionAgent:
         self.ready = rospy.Publisher('ready', String, queue_size=100)
         self.ready.publish(types.NOT_READY)
 
-        self.total = rospy.Publisher('total_direction', StringArray, queue_size=5)
+        self.total = rospy.Publisher('total_direction', StringArray, queue_size=15)
 
         # position and speed of robots
         for i in range(self.total_robots):
@@ -48,7 +48,7 @@ class IntersectionAgent:
             self.cmd_vel[i] = rospy.Subscriber('/tb3_' + str(i) + '/cmd_vel', Twist, self.callback_cmd, (i))
             self.position[i] = rospy.wait_for_message('/tb3_' + str(i) + '/direction', String)
             self.direction[i] = self.position[i].data
-            self.command[i] = rospy.Publisher('tb3_' + str(i) + '_command', String, queue_size=5)
+            self.command[i] = rospy.Publisher('tb3_' + str(i) + '_command', String, queue_size=15)
             self.received_state[i] = rospy.Subscriber('tb3_' + str(i) + '/self_command', String, self.callback_state, (i))
 
         # store current distance
@@ -100,7 +100,7 @@ class IntersectionAgent:
                 self.command[i].publish(self.state[i])
 
             print(self.state)
-            print(self.added_to_queue)
+            # print(self.added_to_queue)
             self.rate.sleep()
 
 
