@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import random
 import rospy
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Point, Twist
@@ -119,14 +120,12 @@ class Run_Node(Data):
 
 
     def choose_status(self, x):
-        dispatcher = {
+        return {
             types.MOVING: self.Start,
             types.ENTER_INTERSECTION: self.Enter_intersection,
             types.PASS_INTERSECTION: self.Pass_intersection,
             types.STOP: self.Stop,
-            '': self.Stop
-        }
-        return dispatcher[x]()
+        }.get(x, self.Stop)()
 
     # calculate the direction
     def calc_direction(self, start, end):
