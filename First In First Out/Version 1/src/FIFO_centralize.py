@@ -1,11 +1,17 @@
 #!/usr/bin/env python
 
+from math import atan2, copysign, pi, pow, radians, sqrt
+import time
+import numpy as np
 import rospy
+import tf
 from geometry_msgs.msg import Point, Quaternion, Twist
 from std_msgs.msg import Int32, String
+from tf.transformations import euler_from_quaternion
+import random
 from nav_msgs.msg import Odometry
+
 import ActionType as types
-from rocon_std_msgs.msg._StringArray import StringArray
 
 
 class IntersectionAgent:
@@ -26,9 +32,6 @@ class IntersectionAgent:
         self.direction = [''] * self.total_robots
         self.command = [None] * self.total_robots
         self.position = [None] * self.total_robots
-        self.received_state = [None] * self.total_robots
-        self.odom = [None] * self.total_robots
-        self.cmd_vel = [None] * self.total_robots
 
         # init centralize
         rospy.loginfo('Center Control Available')
@@ -37,19 +40,14 @@ class IntersectionAgent:
         online_str = "Hello everyone, the Center Control Server is online."
         self.online.publish(online_str)
 
-        self.ready = rospy.Publisher('ready', String, queue_size=100)
-        self.ready.publish(types.NOT_READY)
-
-        self.total = rospy.Publisher('total_direction', StringArray, queue_size=15)
-
         # position and speed of robots
         for i in range(self.total_robots):
-            self.odom[i] = rospy.Subscriber('/tb3_' + str(i) + '/odom', Odometry, self.callback_odom, (i))
-            self.cmd_vel[i] = rospy.Subscriber('/tb3_' + str(i) + '/cmd_vel', Twist, self.callback_cmd, (i))
-            self.position[i] = rospy.wait_for_message('/tb3_' + str(i) + '/direction', String)
+            self.odom = rospy.Subscriber('/tb3_' + str(i) + '/odom', Odometry, self.callback_odom, (i))
+            self.cmd_vel = rospy.Subscriber('/tb3_' + str(i) + '/cmd_vel', Twist, self.callback_cmd, (i))
+            self.command[i] = rospy.Publisher('tb3_' + str(i) + '_command', String, queue_size=5)
+            # get directions
+            self.position[i] = rospy.wait_for_message('/tb3_' + str(i) + '/position', String)
             self.direction[i] = self.position[i].data
-            self.command[i] = rospy.Publisher('tb3_' + str(i) + '_command', String, queue_size=15)
-            self.received_state[i] = rospy.Subscriber('tb3_' + str(i) + '/self_command', String, self.callback_state, (i))
 
         # store current distance
         self.current_dist = [0.0] * self.total_robots
@@ -59,17 +57,11 @@ class IntersectionAgent:
 
         # active queue represent the priority order
         self.active_queue = []
-        
-
-        self.ready.publish(types.READY)
 
         # represent the state of centralize model (init state is moving for all robots)
         self.state = [types.MOVING] * self.total_robots
-        print(self.direction)
-
 
         while not rospy.is_shutdown():
-            self.total.publish(self.direction)
             for i in range(self.total_robots):
                 # get the current distance to target
                 self.current_dist[i] = self.pos_x[i] if self.direction[i] == types.DIR_LEFT or self.direction[i] == types.DIR_RIGHT else self.pos_y[i]
@@ -86,7 +78,7 @@ class IntersectionAgent:
             
             # handle queue
             if self.active_queue:
-                self.state[self.active_queue[0]] = types.ENTER_INTERSECTION
+                self.state[self.active_queue[0]] = types.MOVING
                 if self.active_queue[1:]:
                     for i in self.active_queue[1:]:
                         if abs(self.current_dist[i]) <= self.collision_region:
@@ -94,19 +86,17 @@ class IntersectionAgent:
                             
                 # check if the first vehicle from the queue has passed the threshold yet
                 self.is_passed(self.active_queue[0])
-
+            
             # public commands to robots
             for i in range(self.total_robots):
                 self.command[i].publish(self.state[i])
 
             print(self.state)
-            # print(self.added_to_queue)
             self.rate.sleep()
 
 
     def is_passed(self, first):
         if abs(self.current_dist[first]) < self.safe_region:
-            self.state[first] = types.PASS_INTERSECTION
             self.active_queue.pop(0)
 
 
@@ -117,9 +107,6 @@ class IntersectionAgent:
 
     def callback_cmd(self, msg, args):
         self.speed[args] = msg.linear.x
-
-    def callback_state(self, msg, args):
-        self.state[args] = msg.data
 
 
 
