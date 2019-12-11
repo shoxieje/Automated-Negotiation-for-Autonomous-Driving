@@ -86,7 +86,8 @@ class IntersectionAgent:
             
             # handle queue
             if self.active_queue:
-                self.state[self.active_queue[0]] = types.ENTER_INTERSECTION
+                if abs(self.current_dist[self.active_queue[0]]) <= (self.collision_region + 0.05):
+                    self.state[self.active_queue[0]] = types.ENTER_INTERSECTION
                 if self.active_queue[1:]:
                     for i in self.active_queue[1:]:
                         if abs(self.current_dist[i]) <= self.collision_region:
