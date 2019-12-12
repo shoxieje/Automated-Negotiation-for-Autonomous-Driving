@@ -23,6 +23,8 @@ class Run_Node(Data):
         self.ready = types.NOT_READY
         self.all_direction = ['']
 
+        self.entered_once = True
+
         # speed publisher
         self.cmd_vel = rospy.Publisher('tb3_' + self.name +'/cmd_vel', Twist, queue_size=5)
         odom = rospy.Subscriber('tb3_' + self.name +'/odom', Odometry, self.callback_odom)
@@ -110,7 +112,8 @@ class Run_Node(Data):
                         self.signal = types.STOP
                         self.self_command.publish(types.STOP)
 
-            elif self.prior_command == types.ENTER_INTERSECTION:
+            elif self.prior_command == types.ENTER_INTERSECTION and self.entered_once:
+                self.entered_once = False
                 # start moving when the other vehicles enter the area
                 self.signal = types.MOVING
                 self.self_command.publish(types.MOVING)

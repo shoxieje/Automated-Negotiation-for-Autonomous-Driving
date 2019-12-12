@@ -21,8 +21,7 @@ class IntersectionAgent:
         # initialize attribute related to vehicles
         self.pos_x = [0.0] * self.total_robots
         self.pos_y = [0.0] * self.total_robots
-        self.pos_z = [0.0] * self.total_robots
-        self.speed = [0.0] * self.total_robots
+        # self.pos_z = [0.0] * self.total_robots
         self.direction = [''] * self.total_robots
         self.command = [None] * self.total_robots
         self.position = [None] * self.total_robots
@@ -45,7 +44,6 @@ class IntersectionAgent:
         # position and speed of robots
         for i in range(self.total_robots):
             self.odom[i] = rospy.Subscriber('/tb3_' + str(i) + '/odom', Odometry, self.callback_odom, (i))
-            self.cmd_vel[i] = rospy.Subscriber('/tb3_' + str(i) + '/cmd_vel', Twist, self.callback_cmd, (i))
             self.position[i] = rospy.wait_for_message('/tb3_' + str(i) + '/direction', String)
             self.direction[i] = self.position[i].data
             self.command[i] = rospy.Publisher('tb3_' + str(i) + '_command', String, queue_size=15)
@@ -114,10 +112,8 @@ class IntersectionAgent:
     def callback_odom(self, msg, args):
         self.pos_x[args] = msg.pose.pose.position.x
         self.pos_y[args] = msg.pose.pose.position.y
-        self.pos_z[args] = msg.pose.pose.position.z
+        # self.pos_z[args] = msg.pose.pose.position.z
 
-    def callback_cmd(self, msg, args):
-        self.speed[args] = msg.linear.x
 
     def callback_state(self, msg, args):
         self.state[args] = msg.data
