@@ -43,4 +43,4 @@ class Graph:
         for key in self.vertices.keys():
             a.append(str(key) + ' ' + str(self.vertices[key].neighbors))
 
-        return str(a)
+        return ''.join(a)
