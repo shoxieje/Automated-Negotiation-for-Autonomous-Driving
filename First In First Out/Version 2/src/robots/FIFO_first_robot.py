@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import include_sys_path
 from FIFO_base_robot import *
 
 # second arg is the destination for rotating

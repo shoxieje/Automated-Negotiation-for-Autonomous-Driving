@@ -16,12 +16,12 @@ status = [None] * num
 
 # create the files and make it executable
 for i in range(num):
-    f[i] = open("../First In First Out/Version 1/src/FIFO_robot_{}.py".format(i), "w+")
-    status[i] = os.stat("../First In First Out/Version 1/src/FIFO_robot_{}.py".format(i))
-    os.chmod("../First In First Out/Version 1/src/FIFO_robot_{}.py".format(i), status[i].st_mode | stat.S_IEXEC)
+    f[i] = open("../First In First Out/Version 1/src/robots/FIFO_robot_{}.py".format(i), "w+")
+    status[i] = os.stat("../First In First Out/Version 1/src/robots/FIFO_robot_{}.py".format(i))
+    os.chmod("../First In First Out/Version 1/src/robots/FIFO_robot_{}.py".format(i), status[i].st_mode | stat.S_IEXEC)
 
 
-file_input = "#!/usr/bin/env python\nfrom FIFO_base_robot import *\n\n"
+file_input = "#!/usr/bin/env python\nimport include_sys_path\nfrom FIFO_base_robot import *\n\n"
 
 file_input += "if __name__ == \"__main__\":\n"
 

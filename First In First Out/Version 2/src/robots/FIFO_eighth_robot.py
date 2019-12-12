@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-
+import include_sys_path
 from  FIFO_base_robot import *
 
 if __name__ == "__main__":
