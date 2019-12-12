@@ -11,7 +11,7 @@ from Directed_Graph import *
 
 class IntersectionAgent:
     def __init__(self, total_robots):
-        rospy.init_node('centercontrol', anonymous=True)
+        rospy.init_node('centercontrol', anonymous=True, disable_signals=True)
         self.total_robots = total_robots
 
         # we can have a function to calculate these value
@@ -76,6 +76,9 @@ class IntersectionAgent:
         self.state = [types.MOVING] * self.total_robots
         print(self.direction)
 
+        # while self.total.get_num_connections() != self.total_robots:
+        #     print(self.total.get_num_connections())
+        #     self.rate.sleep()
 
         while not rospy.is_shutdown():
             self.total.publish(self.direction)
@@ -126,9 +129,18 @@ class IntersectionAgent:
                 self.command[i].publish(self.state[i])
 
             print(self.state)
-            # print(self.added_to_queue)
-            self.rate.sleep()
 
+            if self.all_same(self.state):
+                rospy.signal_shutdown('No Vehicles Available in the Intersection!')
+                rospy.on_shutdown(self.myhook)
+            else:
+                self.rate.sleep()
+
+    def all_same(self, x):
+        return all(a == x[0] and a == types.PASS_INTERSECTION for a in x)
+
+    def myhook(self):
+        print("shutdown time!")
 
     def is_passed(self, first):
         if abs(self.current_dist[first]) <= self.safe_region:
