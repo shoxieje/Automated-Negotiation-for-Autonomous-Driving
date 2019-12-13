@@ -33,7 +33,7 @@ class Run_Node(Data):
 
         self.same_direction = []
 
-        self.safe_distance = 0.5
+        self.safe_distance = 0.7
 
         # assign speed
         self.tb3_move_cmd = Twist()
@@ -92,6 +92,7 @@ class Run_Node(Data):
                     self.in_front = self.same_direction[self.same_direction_location_y.index(y)]
     
         if self.in_front is not None:
+            print('Robot {} is infront of: {}'.format(self.in_front, self.name))
             prior_vehicle = rospy.Subscriber('/tb3_' + str(self.in_front) + '_command', String, self.callback_prior_command)
         else:
             del self.in_front
@@ -103,11 +104,17 @@ class Run_Node(Data):
 
         signal_data = rospy.Subscriber('tb3_'+ self.name +'_command', String, self.callback_signal)
 
+
         while not rospy.is_shutdown():
             if self.prior_command == types.STOP:
                 if self.direction == types.DIR_RIGHT or self.direction == types.DIR_LEFT:
                     # get the distance between the current vehicle and the one in front of it
                     if self.same_direction_location_x[self.same_direction.index(self.in_front)] - self.current_position[0] <= self.safe_distance:
+                        # stop immediately
+                        self.signal = types.STOP
+                        self.self_command.publish(types.STOP)
+                else:
+                    if self.same_direction_location_y[self.same_direction.index(self.in_front)] - self.current_position[1] <= self.safe_distance:
                         # stop immediately
                         self.signal = types.STOP
                         self.self_command.publish(types.STOP)
@@ -150,16 +157,22 @@ class Run_Node(Data):
     def get_distance(self, a, b):
         return abs(abs(a) - abs(b))
 
+    def myhook(self):
+        print("shutdown time for {}!".format(self.name))
+
 
     def Start(self):
         # assign random speed (could add acceleration speed later)
         self.tb3_move_cmd.linear.x = self.speed
         self.cmd_vel.publish(self.tb3_move_cmd)
+        self.r.sleep()
+
 
     def Stop(self):
         # set speed
         self.tb3_move_cmd.linear.x = 0.0
         self.cmd_vel.publish(self.tb3_move_cmd)
+        self.r.sleep()
 
 
     # Enter and Pass intersection currently is the same as Start
@@ -167,38 +180,21 @@ class Run_Node(Data):
         # assign random speed (could add acceleration speed later)
         self.tb3_move_cmd.linear.x = self.speed
         self.cmd_vel.publish(self.tb3_move_cmd)
+        self.r.sleep()
+
 
     def Pass_intersection(self):
         # assign random speed (could add acceleration speed later)
         self.tb3_move_cmd.linear.x = self.speed
         self.cmd_vel.publish(self.tb3_move_cmd)
-
-
-    # doesn't work really well currently
-    # def Rotate(self):
-    #     while True:
-    #         self.x = self.destination[0] - self.current_position[0]
-    #         self.y = self.destination[1] - self.current_position[1]
-
-    #         self.angle_to_dest = atan2(self.y, self.x)
-
-    #         if abs(self.angle_to_dest - self.rotation) > 0.005:
-    #             self.tb3_move_cmd.linear.x = 0.0
-    #             self.tb3_move_cmd.angular.z = 0.3
-    #         else:
-    #             self.tb3_move_cmd.angular.z = 0.0 
-    #             self.cmd_vel.publish(self.tb3_move_cmd)
-    #             break
-
-    #         self.cmd_vel.publish(self.tb3_move_cmd)
+        rospy.signal_shutdown('No Vehicles Available in the Intersection!')
+        rospy.on_shutdown(self.myhook)
 
 
     # callback function
     def callback_odom(self, msg):
         self.current_position[0], self.current_position[1] = msg.pose.pose.position.x, msg.pose.pose.position.y
 
-        # rot_q = msg.pose.pose.orientation
-        # (roll, pitch, self.rotation) = euler_from_quaternion([rot_q.x, rot_q.y, rot_q.z, rot_q.w])
 
     def callback_signal(self, msg):
         self.signal = msg.data

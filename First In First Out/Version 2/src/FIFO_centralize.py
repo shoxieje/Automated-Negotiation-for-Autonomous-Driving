@@ -6,7 +6,7 @@ from std_msgs.msg import Int32, String
 from nav_msgs.msg import Odometry
 import ActionType as types
 from rocon_std_msgs.msg._StringArray import StringArray
-
+from Directed_Graph import *
 
 class IntersectionAgent:
     def __init__(self, total_robots):
@@ -41,6 +41,9 @@ class IntersectionAgent:
 
         self.total = rospy.Publisher('total_direction', StringArray, queue_size=15)
 
+        self.vertices = []
+        self.directed_graph = Graph()
+
         # position and speed of robots
         for i in range(self.total_robots):
             self.odom[i] = rospy.Subscriber('/tb3_' + str(i) + '/odom', Odometry, self.callback_odom, (i))
@@ -48,23 +51,29 @@ class IntersectionAgent:
             self.direction[i] = self.position[i].data
             self.command[i] = rospy.Publisher('tb3_' + str(i) + '_command', String, queue_size=15)
             self.received_state[i] = rospy.Subscriber('tb3_' + str(i) + '/self_command', String, self.callback_state, (i))
+            self.vertices.append(i)
 
+
+        for i in self.vertices:
+            self.directed_graph.add_vertex(Vertex(i))
+        
         # store current distance
         self.current_dist = [0.0] * self.total_robots
 
         # check whether added to queue or not
         self.added_to_queue = [False] * self.total_robots
+        self.added_to_graph = [False] * len(self.vertices)
 
         # active queue represent the priority order
         self.active_queue = []
         
+        output_file = open("../catkin_ws/src/turtlebot3_simulations/turtlebot3_gazebo/info.txt", "w+")
 
         self.ready.publish(types.READY)
 
         # represent the state of centralize model (init state is moving for all robots)
         self.state = [types.MOVING] * self.total_robots
         print(self.direction)
-
 
         while not rospy.is_shutdown():
             self.total.publish(self.direction)
@@ -86,6 +95,19 @@ class IntersectionAgent:
             if self.active_queue:
                 if abs(self.current_dist[self.active_queue[0]]) <= (self.collision_region + 0.05):
                     self.state[self.active_queue[0]] = types.ENTER_INTERSECTION
+                    if self.added_to_graph[self.active_queue[0]] == False:
+                        self.added_to_graph[self.active_queue[0]] = True
+                        for i in self.vertices:
+                            if i != self.active_queue[0]:
+                                self.directed_graph.add_edges(self.vertices[self.vertices.index(self.active_queue[0])], i)
+
+                        self.vertices.pop(self.vertices.index(self.active_queue[0]))
+
+                        output_file.write(self.directed_graph.print_graph() + '\n')
+
+                        if len(self.vertices) == 0:
+                            output_file.close()
+
                 if self.active_queue[1:]:
                     for i in self.active_queue[1:]:
                         if abs(self.current_dist[i]) <= self.collision_region:
@@ -99,6 +121,7 @@ class IntersectionAgent:
                 self.command[i].publish(self.state[i])
 
             print(self.state)
+
             if self.all_same(self.state):
                 rospy.signal_shutdown('No Vehicles Available in the Intersection!')
                 rospy.on_shutdown(self.myhook)
@@ -111,9 +134,8 @@ class IntersectionAgent:
     def myhook(self):
         print("shutdown time!")
 
-
     def is_passed(self, first):
-        if abs(self.current_dist[first]) < self.safe_region:
+        if abs(self.current_dist[first]) <= self.safe_region:
             self.state[first] = types.PASS_INTERSECTION
             self.active_queue.pop(0)
 
@@ -122,7 +144,6 @@ class IntersectionAgent:
         self.pos_x[args] = msg.pose.pose.position.x
         self.pos_y[args] = msg.pose.pose.position.y
         # self.pos_z[args] = msg.pose.pose.position.z
-
 
     def callback_state(self, msg, args):
         self.state[args] = msg.data

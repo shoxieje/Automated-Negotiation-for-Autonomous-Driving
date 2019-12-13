@@ -41,6 +41,6 @@ class Graph:
     def print_graph(self):
         a = []
         for key in self.vertices.keys():
-            a.append(str(key) + ' ' + str(self.vertices[key].neighbors))
+            a.append(str(key) + ' ' + str(self.vertices[key].neighbors) + '\n')
 
         return ''.join(a)
