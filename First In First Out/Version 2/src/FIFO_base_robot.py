@@ -87,16 +87,18 @@ class Run_Node(Data):
 
 
         # method to get the front vehicle id
-        for x in self.same_direction_location_x:
-            if self.direction == types.DIR_LEFT or self.direction == types.DIR_RIGHT:
-                if abs(min(self.same_direction_location_x)) < abs(self.initial_position[0]) and self.get_distance(min(self.same_direction_location_y), self.initial_position[1]) <= 0.2:
-                    self.in_front = self.same_direction[self.same_direction_location_x.index(x)]
+        if self.direction == types.DIR_LEFT or self.direction == types.DIR_RIGHT:
+            self.closest_x = self.find_closest_distance(self.same_direction_location_x, self.initial_position[0])
+            if self.closest_x != 0 and self.get_distance(min(self.same_direction_location_y), self.initial_position[1]) <= 0.2:
+                self.in_front = self.same_direction[self.same_direction_location_x.index(self.closest_x)]
 
-        for y in self.same_direction_location_y:
-            if self.direction == types.DIR_DOWN or self.direction == types.DIR_UP:
-                if abs(min(self.same_direction_location_y)) < abs(self.initial_position[1]) and self.get_distance(min(self.same_direction_location_x), self.initial_position[0]) <= 0.2:
-                    self.in_front = self.same_direction[self.same_direction_location_y.index(y)]
-    
+
+        if self.direction == types.DIR_DOWN or self.direction == types.DIR_UP:
+            self.closest_y = self.find_closest_distance(self.same_direction_location_y, self.initial_position[1])
+            if self.closest_y != 0 and self.get_distance(min(self.same_direction_location_x), self.initial_position[0]) <= 0.2:
+                self.in_front = self.same_direction[self.same_direction_location_y.index(self.closest_y)]
+
+        # subscribe to the speed of the vehicle in front
         if self.in_front is not None:
             print('Robot {} is infront of: {}'.format(self.in_front, self.name))
             prior_vehicle_odom = rospy.Subscriber('/tb3_' + str(self.in_front) + '_command', String, self.callback_prior_command)
@@ -111,6 +113,8 @@ class Run_Node(Data):
         rospy.sleep(1)
 
         signal_data = rospy.Subscriber('tb3_'+ self.name +'_command', String, self.callback_signal)
+
+        self.in_front_moved = True
 
         while not rospy.is_shutdown():
             if self.in_front is not None:
@@ -136,6 +140,7 @@ class Run_Node(Data):
 
 
             if self.prior_command == types.STOP:
+                self.in_front_moved = True
                 if self.direction == types.DIR_RIGHT or self.direction == types.DIR_LEFT:
                     # get the distance between the current vehicle and the one in front of it
                     if self.prior_position_x - self.current_position[0] <= self.safe_distance:
@@ -151,6 +156,11 @@ class Run_Node(Data):
             elif self.prior_command == types.ENTER_INTERSECTION and self.entered_once:
                 self.entered_once = False
                 # start moving when the other vehicles enter the area
+                self.signal = types.MOVING
+                self.self_command.publish(types.MOVING)
+
+            elif self.prior_command == types.MOVING and self.in_front_moved:
+                self.in_front_moved = False
                 self.signal = types.MOVING
                 self.self_command.publish(types.MOVING)
             
@@ -186,6 +196,13 @@ class Run_Node(Data):
     def get_distance(self, a, b):
         return abs(abs(a) - abs(b))
 
+    def find_closest_distance(self, l, t):
+        closest_values = [x for x in l if abs(x) < abs(t)]
+        if closest_values:
+            return max(closest_values) if t > 0 else min(closest_values)
+        else:
+            return 0
+            
     def myhook(self):
         print("shutdown time for {}!".format(self.name))
 
