@@ -9,7 +9,7 @@ else:
     num = int(input('How many robots do you want?\n'))
 
 
-f = open("../First In First Out/Version 1/launch/FIFO_load_world_{}.launch".format(num), "w+")
+f = open("../First In First Out/Version 2/launch/FIFO_load_world_{}.launch".format(num), "w+")
 
 
 file_input = "<launch>\n\t<arg name='model' default='$(env TURTLEBOT3_MODEL)' doc='model type [burger, waffle, waffle_pi]'/>\n\n\n"
