@@ -13,7 +13,7 @@ else:
 f = [None] * num
 status = [None] * num
 
-desired_path = sys.path[0][:-(len(sys.path[0]) - sys.path[0].rfind('/'))] + '/First In First Out/Version 2/src/robots_{}'.format(num)
+desired_path = sys.path[0][:-(len(sys.path[0]) - sys.path[0].rfind('/'))] + '/First In First Out/src/robots_{}'.format(num)
 
 if not os.path.exists(desired_path):
     os.makedirs(desired_path)
