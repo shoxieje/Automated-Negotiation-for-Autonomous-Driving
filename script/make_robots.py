@@ -3,7 +3,6 @@ import sys
 import os
 import stat
 
-
 num = 0
 
 if len(sys.argv) > 1:
@@ -14,11 +13,16 @@ else:
 f = [None] * num
 status = [None] * num
 
+desired_path = sys.path[0][:-(len(sys.path[0]) - sys.path[0].rfind('/'))] + '/First In First Out/Version 2/src/robots_{}'.format(num)
+
+if not os.path.exists(desired_path):
+    os.makedirs(desired_path)
+
 # create the files and make it executable
 for i in range(num):
-    f[i] = open("../First In First Out/Version 1/src/robots/FIFO_robot_{}.py".format(i), "w+")
-    status[i] = os.stat("../First In First Out/Version 1/src/robots/FIFO_robot_{}.py".format(i))
-    os.chmod("../First In First Out/Version 1/src/robots/FIFO_robot_{}.py".format(i), status[i].st_mode | stat.S_IEXEC)
+    f[i] = open(desired_path + "/FIFO_robot_{}_{}.py".format(i, num), "w+")
+    status[i] = os.stat(desired_path + "/FIFO_robot_{}_{}.py".format(i, num))
+    os.chmod(desired_path + "/FIFO_robot_{}_{}.py".format(i, num), status[i].st_mode | stat.S_IEXEC)
 
 
 file_input = "#!/usr/bin/env python\nimport include_sys_path\nfrom FIFO_base_robot import *\n\n"
@@ -65,3 +69,12 @@ for i in range(num):
 for i in range(num):
     f[i].write(file_input + individual_input[i])
     f[i].close()
+
+
+t = open(desired_path + '/include_sys_path.py', "w+")
+
+t_input = "import sys\nsys.path.append(sys.path[0][:-(len(sys.path[0]) - sys.path[0].rfind('/'))])"
+
+
+t.write(t_input)
+t.close()

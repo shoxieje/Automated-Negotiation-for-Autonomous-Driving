@@ -8,12 +8,12 @@ if len(sys.argv) > 1:
 else:
     num = int(input('How many robots do you want?\n'))
 
-f = open('../First In First Out/Version 1/launch/FIFO_robots_{}.launch'.format(num), "w+")
+f = open('../First In First Out/Version 2/launch/FIFO_robots_{}.launch'.format(num), "w+")
 
 file_input = "<launch>\n"
 
 for i in range(num):
-    file_input += "\t<node pkg=\"turtlebot3_gazebo\" type=\"FIFO_robot_{0}.py\" name=\"tb3_{0}\" output=\"screen\"></node>\n".format(i)
+    file_input += "\t<node pkg=\"turtlebot3_gazebo\" type=\"FIFO_robot_{0}_{1}.py\" name=\"tb3_{0}\" output=\"screen\"></node>\n".format(i, num)
 
 
 file_input += "</launch>"
