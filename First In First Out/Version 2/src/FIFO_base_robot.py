@@ -145,24 +145,20 @@ class Run_Node(Data):
                     # get the distance between the current vehicle and the one in front of it
                     if self.prior_position_x - self.current_position[0] <= self.safe_distance:
                         # stop immediately
-                        self.signal = types.STOP
-                        self.self_command.publish(types.STOP)
+                        self.publish_signal(types.STOP)
                 else:
                     if self.prior_position_y - self.current_position[1] <= self.safe_distance:
                         # stop immediately
-                        self.signal = types.STOP
-                        self.self_command.publish(types.STOP)
+                        self.publish_signal(types.STOP)
 
             elif self.prior_command == types.ENTER_INTERSECTION and self.entered_once:
                 self.entered_once = False
                 # start moving when the other vehicles enter the area
-                self.signal = types.MOVING
-                self.self_command.publish(types.MOVING)
+                self.publish_signal(types.MOVING)
 
             elif self.prior_command == types.MOVING and self.in_front_moved:
                 self.in_front_moved = False
-                self.signal = types.MOVING
-                self.self_command.publish(types.MOVING)
+                self.publish_signal(types.MOVING)
             
             # * choose_status is working
             self.choose_status(self.signal)
@@ -202,6 +198,10 @@ class Run_Node(Data):
             return max(closest_values) if t > 0 else min(closest_values)
         else:
             return 0
+
+    def publish_signal(self, x):
+        self.signal = x
+        self.self_command.publish(x)
             
     def myhook(self):
         print("shutdown time for {}!".format(self.name))
