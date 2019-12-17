@@ -1,12 +1,15 @@
 #!/usr/bin/env python
 
+from math import atan2, pi, pow, sqrt
 import random
 import rospy
+import numpy as np
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Point, Twist
 from std_msgs.msg import Int32, String
 import ActionType as types
 from FIFO_base_info import Data
+from tf.transformations import euler_from_quaternion
 
 from rocon_std_msgs.msg._StringArray import StringArray
 
@@ -35,15 +38,14 @@ class Run_Node(Data):
 
         self.same_direction = []
 
-        self.safe_distance = 0.7
+        self.safe_distance = 0.5
 
         # assign speed
         self.tb3_move_cmd = Twist()
-        self.speed = round(random.uniform(0.1, 0.3), 2)
+        self.speed = round(random.uniform(0.1, 0.5), 2)
         # self.speed = 0.15
 
         print('Robot {}: {}'.format(self.name, self.speed))
-
 
         # location publisher
         self.location = rospy.Publisher('tb3_' + self.name + '/direction', String, queue_size=5)
@@ -117,6 +119,7 @@ class Run_Node(Data):
         self.in_front_moved = True
 
         while not rospy.is_shutdown():
+            self.rotate()
             if self.in_front is not None:
                 self.prior_position_x = self.same_direction_location_x[self.same_direction.index(self.in_front)]
                 self.prior_position_y = self.same_direction_location_y[self.same_direction.index(self.in_front)]
@@ -163,7 +166,6 @@ class Run_Node(Data):
             # * choose_status is working
             self.choose_status(self.signal)
 
-
     def choose_status(self, x):
         return {
             types.MOVING: self.Start,
@@ -171,6 +173,7 @@ class Run_Node(Data):
             types.PASS_INTERSECTION: self.Pass_intersection,
             types.STOP: self.Stop,
         }.get(x, self.Stop)()
+
 
     # calculate the direction
     def calc_direction(self, start, end):
@@ -196,8 +199,8 @@ class Run_Node(Data):
         closest_values = [x for x in l if abs(x) < abs(t)]
         if closest_values:
             return max(closest_values) if t > 0 else min(closest_values)
-        else:
-            return 0
+        
+        return 0
 
     def publish_signal(self, x):
         self.signal = x
@@ -238,9 +241,30 @@ class Run_Node(Data):
         rospy.on_shutdown(self.myhook)
 
 
+    def rotate(self):
+        path_angle = atan2(self.destination[1] - self.current_position[1], self.destination[0] - self.current_position[0])
+
+        self.tb3_move_cmd.angular.z = path_angle - self.rotation
+        if self.tb3_move_cmd.angular.z > pi:
+            self.tb3_move_cmd.angular.z = self.tb3_move_cmd.angular.z - 2 * pi
+        if self.tb3_move_cmd.angular.z < -pi:
+            self.tb3_move_cmd.angular.z = self.tb3_move_cmd.angular.z + 2 * pi
+        if self.tb3_move_cmd.angular.z > 0:
+            self.tb3_move_cmd.angular.z = min(
+                self.tb3_move_cmd.angular.z, 1.5)
+        else:
+            self.tb3_move_cmd.angular.z = max(
+                self.tb3_move_cmd.angular.z, -1.5)
+
+        self.cmd_vel.publish(self.tb3_move_cmd)
+
+
     # callback function
     def callback_odom(self, msg):
         self.current_position[0], self.current_position[1] = msg.pose.pose.position.x, msg.pose.pose.position.y
+        # get the rotation
+        rot_q = msg.pose.pose.orientation
+        (roll, pitch, self.rotation) = euler_from_quaternion([rot_q.x, rot_q.y, rot_q.z, rot_q.w])
 
 
     def callback_signal(self, msg):
