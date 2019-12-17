@@ -15,7 +15,7 @@ class IntersectionAgent:
 
         # we can have a function to calculate these value
         self.add_to_queue_distance = 4.0
-        self.collision_region = 2.0
+        self.collision_region = 1.0
         self.safe_region = 0.5
 
         # initialize attribute related to vehicles
@@ -114,7 +114,7 @@ class IntersectionAgent:
                             self.state[i] = types.STOP
                             
                 # check if the first vehicle from the queue has passed the threshold yet
-                self.is_passed(self.active_queue[0])
+                self.check_passed(self.active_queue[0])
 
             # public commands to robots
             for i in range(self.total_robots):
@@ -131,14 +131,24 @@ class IntersectionAgent:
     def all_same(self, x):
         return all(a == x[0] and a == types.PASS_INTERSECTION for a in x)
 
-    def myhook(self):
-        print("shutdown time!")
+    def check_passed(self, first):
 
-    def is_passed(self, first):
         if abs(self.current_dist[first]) <= self.safe_region:
             self.state[first] = types.PASS_INTERSECTION
             self.active_queue.pop(0)
+            
+        # if self.direction[first] == types.DIR_LEFT or self.direction[first] == types.DIR_DOWN:
+            # if self.current_dist[first] >= -self.safe_region:
+                # self.state[first] = types.PASS_INTERSECTION
+                # self.active_queue.pop(0)
 
+        # elif self.direction[first] == types.DIR_LEFT or self.direction[first] == types.DIR_DOWN:
+            # if self.current_dist[first] >= self.safe_region:
+                # self.state[first] = types.PASS_INTERSECTION
+                # self.active_queue.pop(0)
+
+    def myhook(self):
+        print("shutdown time!")
 
     def callback_odom(self, msg, args):
         self.pos_x[args] = msg.pose.pose.position.x
@@ -151,4 +161,4 @@ class IntersectionAgent:
 
 
 if __name__ == "__main__":
-    IntersectionAgent(total_robots=8)
+    IntersectionAgent(total_robots=16)

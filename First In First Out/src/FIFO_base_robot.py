@@ -38,11 +38,16 @@ class Run_Node(Data):
 
         self.same_direction = []
 
-        self.safe_distance = 0.5
+        self.safe_distance = 0.35
 
         # assign speed
         self.tb3_move_cmd = Twist()
+        self.max_speed = 0.3
         self.speed = round(random.uniform(0.1, 0.5), 2)
+
+        if self.speed > self.max_speed:
+            self.speed = self.max_speed
+
         # self.speed = 0.15
 
         print('Robot {}: {}'.format(self.name, self.speed))
@@ -146,11 +151,11 @@ class Run_Node(Data):
                 self.in_front_moved = True
                 if self.direction == types.DIR_RIGHT or self.direction == types.DIR_LEFT:
                     # get the distance between the current vehicle and the one in front of it
-                    if self.prior_position_x - self.current_position[0] <= self.safe_distance:
+                    if self.get_distance(self.prior_position_x, self.current_position[0]) <= self.safe_distance:
                         # stop immediately
                         self.publish_signal(types.STOP)
                 else:
-                    if self.prior_position_y - self.current_position[1] <= self.safe_distance:
+                    if self.get_distance(self.prior_position_y, self.current_position[1]) <= self.safe_distance:
                         # stop immediately
                         self.publish_signal(types.STOP)
 
@@ -199,7 +204,6 @@ class Run_Node(Data):
         closest_values = [x for x in l if abs(x) < abs(t)]
         if closest_values:
             return max(closest_values) if t > 0 else min(closest_values)
-        
         return 0
 
     def publish_signal(self, x):
@@ -214,6 +218,7 @@ class Run_Node(Data):
         # assign random speed (could add acceleration speed later)
         self.tb3_move_cmd.linear.x = self.speed
         self.cmd_vel.publish(self.tb3_move_cmd)
+        # self.rotate()
         self.r.sleep()
 
 
@@ -221,6 +226,7 @@ class Run_Node(Data):
         # set speed
         self.tb3_move_cmd.linear.x = 0.0
         self.cmd_vel.publish(self.tb3_move_cmd)
+        # self.rotate()
         self.r.sleep()
 
 
@@ -229,6 +235,7 @@ class Run_Node(Data):
         # assign random speed (could add acceleration speed later)
         self.tb3_move_cmd.linear.x = self.speed
         self.cmd_vel.publish(self.tb3_move_cmd)
+        # self.rotate()
         self.r.sleep()
 
 
@@ -262,7 +269,6 @@ class Run_Node(Data):
     # callback function
     def callback_odom(self, msg):
         self.current_position[0], self.current_position[1] = msg.pose.pose.position.x, msg.pose.pose.position.y
-        # get the rotation
         rot_q = msg.pose.pose.orientation
         (roll, pitch, self.rotation) = euler_from_quaternion([rot_q.x, rot_q.y, rot_q.z, rot_q.w])
 
