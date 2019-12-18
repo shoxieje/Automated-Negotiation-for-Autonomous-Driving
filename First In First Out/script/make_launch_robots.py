@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import sys
+import os
 
 num = 0
 
@@ -8,7 +9,14 @@ if len(sys.argv) > 1:
 else:
     num = int(input('How many robots do you want?\n'))
 
-f = open('../launch/FIFO_robots_{}.launch'.format(num), "w+")
+
+desired_path_launch = sys.path[0][:-(len(sys.path[0]) - sys.path[0].rfind('/'))] + '/launch/FIFO_launch_{}'.format(num)
+
+if not os.path.exists(desired_path_launch):
+    os.makedirs(desired_path_launch)
+
+
+f = open('../launch/FIFO_launch_{0}/FIFO_robots_{0}.launch'.format(num), "w+")
 
 file_input = "<launch>\n"
 

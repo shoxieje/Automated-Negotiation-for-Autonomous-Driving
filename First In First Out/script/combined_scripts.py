@@ -12,7 +12,10 @@ else:
 os.system('./make_world.py ' + str(num))
 os.system('./make_robots.py ' + str(num))
 os.system('./make_launch_robots.py ' + str(num))
+os.system('./make_centralize.py ' + str(num))
 
 print('./make_world.py '+ str(num))
 print('./make_robots.py '+ str(num))
 print('./make_launch_robots.py '+ str(num))
+print('./make_centralize.py '+ str(num))
+

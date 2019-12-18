@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import sys
+import os
 
 num = 0
 
@@ -8,8 +9,14 @@ if len(sys.argv) > 1:
 else:
     num = int(input('How many robots do you want?\n'))
 
+desired_path_launch = sys.path[0][:-(len(sys.path[0]) - sys.path[0].rfind('/'))] + '/launch/FIFO_launch_{}'.format(num)
 
-f = open("../launch/FIFO_load_world_{}.launch".format(num), "w+")
+if not os.path.exists(desired_path_launch):
+    os.makedirs(desired_path_launch)
+
+
+
+f = open("../launch/FIFO_launch_{0}/FIFO_load_world_{0}.launch".format(num), "w+")
 
 
 file_input = "<launch>\n\t<arg name='model' default='$(env TURTLEBOT3_MODEL)' doc='model type [burger, waffle, waffle_pi]'/>\n\n\n"
