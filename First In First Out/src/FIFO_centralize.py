@@ -133,19 +133,15 @@ class IntersectionAgent:
 
     def check_passed(self, first):
 
-        if abs(self.current_dist[first]) <= self.safe_region:
-            self.state[first] = types.PASS_INTERSECTION
-            self.active_queue.pop(0)
-            
-        # if self.direction[first] == types.DIR_LEFT or self.direction[first] == types.DIR_DOWN:
-            # if self.current_dist[first] >= -self.safe_region:
-                # self.state[first] = types.PASS_INTERSECTION
-                # self.active_queue.pop(0)
 
-        # elif self.direction[first] == types.DIR_LEFT or self.direction[first] == types.DIR_DOWN:
-            # if self.current_dist[first] >= self.safe_region:
-                # self.state[first] = types.PASS_INTERSECTION
-                # self.active_queue.pop(0)
+        if self.direction[first] == types.DIR_LEFT or self.direction[first] == types.DIR_DOWN:
+            if self.current_dist[first] <= -self.safe_region:
+                self.state[first] = types.PASS_INTERSECTION
+                self.active_queue.pop(0)
+        else:
+            if self.current_dist[first] >= self.safe_region:
+                self.state[first] = types.PASS_INTERSECTION
+                self.active_queue.pop(0)
 
     def myhook(self):
         print("shutdown time!")
@@ -161,4 +157,4 @@ class IntersectionAgent:
 
 
 if __name__ == "__main__":
-    IntersectionAgent(total_robots=16)
+    IntersectionAgent(total_robots=8)

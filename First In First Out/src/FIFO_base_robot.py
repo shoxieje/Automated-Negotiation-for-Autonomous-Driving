@@ -125,15 +125,19 @@ class Run_Node(Data):
 
         while not rospy.is_shutdown():
             self.rotate()
+
+            # print('Robot {} with catch up {}'.format(self.name, self.catch_up))
+
+            self.position = self.current_position[0] if self.direction == types.DIR_LEFT or self.direction == types.DIR_RIGHT else self.current_position[1]
+
             if self.in_front is not None:
                 self.prior_position_x = self.same_direction_location_x[self.same_direction.index(self.in_front)]
                 self.prior_position_y = self.same_direction_location_y[self.same_direction.index(self.in_front)]
                 
             if self.catch_up == False:
                 self.prior_position = self.prior_position_x if self.direction == types.DIR_LEFT or self.direction == types.DIR_RIGHT else self.prior_position_y
-                self.position = self.current_position[0] if self.direction == types.DIR_LEFT or self.direction == types.DIR_RIGHT else self.current_position[1]
 
-                if self.position - self.prior_position <= 0.4:
+                if self.get_distance(self.position, self.prior_position) <= 0.4 and self.prior_command != types.STOP:
                     self.catch_up = True
                     # get the speed of vehicle in front
                     while self.prior_speed == 0.0:
@@ -167,7 +171,18 @@ class Run_Node(Data):
             elif self.prior_command == types.MOVING and self.in_front_moved:
                 self.in_front_moved = False
                 self.publish_signal(types.MOVING)
+
+            if self.direction == types.DIR_LEFT or self.direction == types.DIR_RIGHT:
+                if abs(self.current_position[0]) > abs(self.destination[0]):
+                    rospy.signal_shutdown('Passed Intersection!')
+                    rospy.on_shutdown(self.myhook)
+            else:
+                if abs(self.current_position[1]) > abs(self.destination[1]):
+                    rospy.signal_shutdown('Passed Intersection!')
+                    rospy.on_shutdown(self.myhook)
             
+            # print('Robot {} with prior {} and speed {} and signal {}'.format(self.name, self.prior_command, self.speed, self.signal))
+
             # * choose_status is working
             self.choose_status(self.signal)
 
@@ -244,8 +259,8 @@ class Run_Node(Data):
         # shutdown the node when it's passed the intersection
         self.tb3_move_cmd.linear.x = self.speed
         self.cmd_vel.publish(self.tb3_move_cmd)
-        rospy.signal_shutdown('Passed Intersection!')
-        rospy.on_shutdown(self.myhook)
+        # rospy.signal_shutdown('Passed Intersection!')
+        # rospy.on_shutdown(self.myhook)
 
 
     def rotate(self):
