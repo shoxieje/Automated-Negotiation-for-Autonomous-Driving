@@ -8,7 +8,7 @@ if len(sys.argv) > 1:
 else:
     num = int(input('How many robots do you want?\n'))
 
-f = open('../First In First Out/launch/FIFO_robots_{}.launch'.format(num), "w+")
+f = open('../launch/FIFO_robots_{}.launch'.format(num), "w+")
 
 file_input = "<launch>\n"
 

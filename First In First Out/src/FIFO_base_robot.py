@@ -109,6 +109,7 @@ class Run_Node(Data):
         if self.in_front is not None:
             print('Robot {} is infront of: {}'.format(self.in_front, self.name))
             prior_vehicle_odom = rospy.Subscriber('/tb3_' + str(self.in_front) + '_command', String, self.callback_prior_command)
+            prior_vehicle_speed = rospy.Subscriber('tb3_' + str(self.in_front) + '/cmd_vel', Twist, self.callback_prior_speed)
             self.catch_up = False
 
         # unsubscribe to unnecessary topic
@@ -124,33 +125,23 @@ class Run_Node(Data):
         self.in_front_moved = True
 
         while not rospy.is_shutdown():
+            # guide the robot toward the direction
             self.rotate()
 
-            # print('Robot {} with catch up {}'.format(self.name, self.catch_up))
-
+            # adjust the speed when it's get too close to the font vehicle
             self.position = self.current_position[0] if self.direction == types.DIR_LEFT or self.direction == types.DIR_RIGHT else self.current_position[1]
 
-            if self.in_front is not None:
+            if self.in_front is not None and self.prior_command == types.MOVING :
                 self.prior_position_x = self.same_direction_location_x[self.same_direction.index(self.in_front)]
                 self.prior_position_y = self.same_direction_location_y[self.same_direction.index(self.in_front)]
                 
-            if self.catch_up == False:
                 self.prior_position = self.prior_position_x if self.direction == types.DIR_LEFT or self.direction == types.DIR_RIGHT else self.prior_position_y
 
-                if self.get_distance(self.position, self.prior_position) <= 0.4 and self.prior_command != types.STOP:
-                    self.catch_up = True
-                    # get the speed of vehicle in front
-                    while self.prior_speed == 0.0:
-                        self.prior_vehicle_speed = rospy.wait_for_message('tb3_' + str(self.in_front) + '/cmd_vel', Twist)
-                        self.prior_speed = self.prior_vehicle_speed.linear.x
-                        print('{} catch up {}, speed = {}'.format(self.name, self.in_front, self.prior_speed))
-
-                    if self.speed > self.prior_speed:
+                if self.get_distance(self.position, self.prior_position) <= (self.safe_distance + 0.1):
+                    if self.speed > self.prior_speed and self.prior_speed != 0.0:
                         self.speed = self.prior_speed
 
-                    print('Final Speed: In front {} <-> Back {} for Vehicle {}'.format(self.prior_speed, self.speed, self.name))
-
-
+            # handle multiple signal coming from the front vehicle
             if self.prior_command == types.STOP:
                 self.in_front_moved = True
                 if self.direction == types.DIR_RIGHT or self.direction == types.DIR_LEFT:
@@ -172,19 +163,18 @@ class Run_Node(Data):
                 self.in_front_moved = False
                 self.publish_signal(types.MOVING)
 
-            if self.direction == types.DIR_LEFT or self.direction == types.DIR_RIGHT:
-                if abs(self.current_position[0]) > abs(self.destination[0]):
-                    rospy.signal_shutdown('Passed Intersection!')
-                    rospy.on_shutdown(self.myhook)
-            else:
-                if abs(self.current_position[1]) > abs(self.destination[1]):
-                    rospy.signal_shutdown('Passed Intersection!')
-                    rospy.on_shutdown(self.myhook)
-            
-            # print('Robot {} with prior {} and speed {} and signal {}'.format(self.name, self.prior_command, self.speed, self.signal))
-
             # * choose_status is working
             self.choose_status(self.signal)
+
+            # * Shutdown the node when it reaches the destination
+            
+            if self.reached_destination():
+                self.tb3_move_cmd.linear.x = self.speed
+                self.tb3_move_cmd.angular.z = 0.0
+                self.cmd_vel.publish(self.tb3_move_cmd)
+                rospy.signal_shutdown('Passed Intersection!')
+                rospy.on_shutdown(self.myhook)
+
 
     def choose_status(self, x):
         return {
@@ -231,36 +221,24 @@ class Run_Node(Data):
 
     def Start(self):
         # assign random speed (could add acceleration speed later)
-        self.tb3_move_cmd.linear.x = self.speed
-        self.cmd_vel.publish(self.tb3_move_cmd)
-        # self.rotate()
-        self.r.sleep()
+        self.publish_speed_signal(self.speed)
 
 
     def Stop(self):
         # set speed
-        self.tb3_move_cmd.linear.x = 0.0
-        self.cmd_vel.publish(self.tb3_move_cmd)
-        # self.rotate()
-        self.r.sleep()
+        self.publish_speed_signal(0.0)
 
 
     # Enter and Pass intersection currently is the same as Start
     def Enter_intersection(self):
         # assign random speed (could add acceleration speed later)
-        self.tb3_move_cmd.linear.x = self.speed
-        self.cmd_vel.publish(self.tb3_move_cmd)
-        # self.rotate()
-        self.r.sleep()
+        self.publish_speed_signal(self.speed)
 
 
     def Pass_intersection(self):
         # assign random speed (could add acceleration speed later)
-        # shutdown the node when it's passed the intersection
-        self.tb3_move_cmd.linear.x = self.speed
-        self.cmd_vel.publish(self.tb3_move_cmd)
-        # rospy.signal_shutdown('Passed Intersection!')
-        # rospy.on_shutdown(self.myhook)
+        self.publish_speed_signal(self.speed)
+
 
 
     def rotate(self):
@@ -281,6 +259,22 @@ class Run_Node(Data):
         self.cmd_vel.publish(self.tb3_move_cmd)
 
 
+    def publish_speed_signal(self, x):
+        self.tb3_move_cmd.linear.x = x
+        self.cmd_vel.publish(self.tb3_move_cmd)
+        self.r.sleep()
+
+
+    def reached_destination(self):
+        if self.signal == types.PASS_INTERSECTION:
+            if self.direction == types.DIR_LEFT or self.direction == types.DIR_RIGHT:
+                if abs(self.current_position[0]) > abs(self.destination[0]):
+                    return True
+            else:
+                if abs(self.current_position[1]) > abs(self.destination[1]):
+                    return True
+        return False
+
     # callback function
     def callback_odom(self, msg):
         self.current_position[0], self.current_position[1] = msg.pose.pose.position.x, msg.pose.pose.position.y
@@ -300,3 +294,6 @@ class Run_Node(Data):
 
     def callback_prior_command(self, msg):
         self.prior_command = msg.data
+
+    def callback_prior_speed(self, msg):
+        self.prior_speed = msg.linear.x
