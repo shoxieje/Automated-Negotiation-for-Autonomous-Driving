@@ -44,6 +44,11 @@ class IntersectionAgent:
         self.vertices = []
         self.directed_graph = Graph()
 
+        self.entered_once = False
+
+        self.prev_platoon = None
+        self.platoon_index = 1
+
         # position and speed of robots
         for i in range(self.total_robots):
             self.odom[i] = rospy.Subscriber('/tb3_' + str(i) + '/odom', Odometry, self.callback_odom, (i))
@@ -93,7 +98,8 @@ class IntersectionAgent:
             
             # handle queue
             if self.active_queue:
-                if abs(self.current_dist[self.active_queue[0]]) <= (self.collision_region + 0.05):
+                if abs(self.current_dist[self.active_queue[0]]) <= (self.collision_region + 0.05) and not self.entered_once:
+                    self.entered_once = True
                     self.state[self.active_queue[0]] = types.ENTER_INTERSECTION
                     if self.added_to_graph[self.active_queue[0]] == False:
                         self.added_to_graph[self.active_queue[0]] = True
@@ -109,8 +115,19 @@ class IntersectionAgent:
                             output_file.close()
 
                 if self.active_queue[1:]:
+                    if types.PLATOONING in self.state:
+                        if self.prev_platoon in self.active_queue:
+                            self.platoon_index += 1
+                        else:
+                            self.platoon_index = 1
+                        
+                        self.prev_platoon = self.active_queue[self.active_queue.index(self.state.index(types.PLATOONING))]
+                        self.active_queue.pop(self.active_queue.index(self.state.index(types.PLATOONING)))
+                        self.active_queue.insert(self.platoon_index, self.state.index(types.PLATOONING))
+                        self.state[self.state.index(types.PLATOONING)] = types.MOVING_NEXT
+
                     for i in self.active_queue[1:]:
-                        if abs(self.current_dist[i]) <= self.collision_region:
+                        if abs(self.current_dist[i]) <= self.collision_region and self.state[i] != types.PLATOONING and self.state[i] != types.MOVING_NEXT:
                             self.state[i] = types.STOP
                             
                 # check if the first vehicle from the queue has passed the threshold yet
@@ -132,16 +149,16 @@ class IntersectionAgent:
         return all(a == x[0] and a == types.PASS_INTERSECTION for a in x)
 
     def check_passed(self, first):
-
-
         if self.direction[first] == types.DIR_LEFT or self.direction[first] == types.DIR_DOWN:
             if self.current_dist[first] <= -self.safe_region:
                 self.state[first] = types.PASS_INTERSECTION
                 self.active_queue.pop(0)
+                self.entered_once = False
         else:
             if self.current_dist[first] >= self.safe_region:
                 self.state[first] = types.PASS_INTERSECTION
                 self.active_queue.pop(0)
+                self.entered_once = False
 
     def myhook(self):
         print("shutdown time!")

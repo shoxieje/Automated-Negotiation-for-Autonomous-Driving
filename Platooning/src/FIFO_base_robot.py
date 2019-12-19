@@ -21,6 +21,8 @@ class Run_Node(Data):
         rospy.init_node('centralize_tb3_' + self.name, anonymous=True)
         self.r = rospy.Rate(10)
 
+        # should receive from the centralize
+        self.safe_region = 0.5
 
         self.signal = ''
         self.ready = types.NOT_READY
@@ -29,6 +31,8 @@ class Run_Node(Data):
         self.entered_once = True
         self.catch_up = None
         self.prior_speed = 0.0
+
+        self.saved_prior_speed = 0.0
 
         # speed publisher
         self.cmd_vel = rospy.Publisher('tb3_' + self.name +'/cmd_vel', Twist, queue_size=5)
@@ -48,6 +52,9 @@ class Run_Node(Data):
         if self.speed > self.max_speed:
             self.speed = self.max_speed
 
+
+        self.end_destination = 0.0
+
         # self.speed = 0.15
 
         print('Robot {}: {}'.format(self.name, self.speed))
@@ -59,16 +66,17 @@ class Run_Node(Data):
         while self.ready == types.NOT_READY:
             self.location.publish(self.direction)
 
+        # unsubscribe to system signal
         self.sys_ready.unregister()
 
+        # get all the direction from other vehicles
         self.total_direction = rospy.wait_for_message('total_direction', StringArray)
         self.all_direction = self.total_direction.strings
 
-
-        # self.command = types.MOVING
+        # publish our own command
         self.self_command = rospy.Publisher('tb3_' + self.name + '/self_command', String, queue_size=5)
 
-        print(self.all_direction)
+        # print(self.all_direction)
 
         for i in range(len(self.all_direction)):
             if self.all_direction[i] == self.direction and str(i) != self.name:
@@ -94,13 +102,12 @@ class Run_Node(Data):
 
 
         # method to get the front vehicle id
-        if self.direction == types.DIR_LEFT or self.direction == types.DIR_RIGHT:
+        if self.verticle_direction():
             self.closest_x = self.find_closest_distance(self.same_direction_location_x, self.initial_position[0])
             if self.closest_x != 0 and self.get_distance(min(self.same_direction_location_y), self.initial_position[1]) <= 0.2:
                 self.in_front = self.same_direction[self.same_direction_location_x.index(self.closest_x)]
 
-
-        if self.direction == types.DIR_DOWN or self.direction == types.DIR_UP:
+        else:
             self.closest_y = self.find_closest_distance(self.same_direction_location_y, self.initial_position[1])
             if self.closest_y != 0 and self.get_distance(min(self.same_direction_location_x), self.initial_position[0]) <= 0.2:
                 self.in_front = self.same_direction[self.same_direction_location_y.index(self.closest_y)]
@@ -117,6 +124,8 @@ class Run_Node(Data):
             if i != self.in_front:
                 self.other_location[self.same_direction.index(i)].unregister()
 
+        self.t1 = 0.0
+        self.t2 = 0.0
 
         rospy.sleep(1)
 
@@ -127,51 +136,55 @@ class Run_Node(Data):
         while not rospy.is_shutdown():
             # guide the robot toward the direction
             self.rotate()
+            self.position = self.current_position[0] if self.verticle_direction() else self.current_position[1]
 
-            # adjust the speed when it's get too close to the font vehicle
-            self.position = self.current_position[0] if self.direction == types.DIR_LEFT or self.direction == types.DIR_RIGHT else self.current_position[1]
-
-            if self.in_front is not None and self.prior_command == types.MOVING :
-                self.prior_position_x = self.same_direction_location_x[self.same_direction.index(self.in_front)]
-                self.prior_position_y = self.same_direction_location_y[self.same_direction.index(self.in_front)]
-                
-                self.prior_position = self.prior_position_x if self.direction == types.DIR_LEFT or self.direction == types.DIR_RIGHT else self.prior_position_y
+            # adjust the speed when it's get too close to the front vehicle
+            if self.in_front is not None and self.prior_command == types.MOVING:
+                # get the front vehicle position
+                if self.verticle_direction():
+                    self.prior_position = self.same_direction_location_x[self.same_direction.index(self.in_front)]
+                else:
+                    self.prior_position = self.same_direction_location_y[self.same_direction.index(self.in_front)]
 
                 if self.get_distance(self.position, self.prior_position) <= (self.safe_distance + 0.1):
+                    # make sure the prior speed doesn't change
                     if self.speed > self.prior_speed and self.prior_speed != 0.0:
                         self.speed = self.prior_speed
 
             # handle multiple signal coming from the front vehicle
             if self.prior_command == types.STOP:
                 self.in_front_moved = True
-                if self.direction == types.DIR_RIGHT or self.direction == types.DIR_LEFT:
-                    # get the distance between the current vehicle and the one in front of it
-                    if self.get_distance(self.prior_position_x, self.current_position[0]) <= self.safe_distance:
-                        # stop immediately
-                        self.publish_signal(types.STOP)
-                else:
-                    if self.get_distance(self.prior_position_y, self.current_position[1]) <= self.safe_distance:
-                        # stop immediately
-                        self.publish_signal(types.STOP)
+                if self.get_distance(self.prior_position, self.position) <= self.safe_distance:
+                     # stop immendiately
+                    self.publish_signal(types.STOP)
 
-            elif self.prior_command == types.ENTER_INTERSECTION and self.entered_once:
+            elif (self.prior_command == types.ENTER_INTERSECTION or self.prior_command == types.MOVING_NEXT) and self.entered_once:
                 self.entered_once = False
                 # start moving when the other vehicles enter the area
-                self.publish_signal(types.MOVING)
+
+                self.t1 = self.calc_to_safe_distance() / self.saved_prior_speed
+                self.t2 = self.calc_to_collision_distance() / self.speed
+
+                if self.t1 >= self.t2:
+                    self.publish_signal(types.PLATOONING)
+                else:
+                    self.publish_signal(types.MOVING)
+
 
             elif self.prior_command == types.MOVING and self.in_front_moved:
                 self.in_front_moved = False
                 self.publish_signal(types.MOVING)
 
+            # elif self.prior_command == types.PLATOONING:
+            #     self.in_front_moved = False
+            #     self.publish_signal(types.PLATOONING)
+
             # * choose_status is working
             self.choose_status(self.signal)
 
             # * Shutdown the node when it reaches the destination
-            
             if self.reached_destination():
-                self.tb3_move_cmd.linear.x = self.speed
-                self.tb3_move_cmd.angular.z = 0.0
-                self.cmd_vel.publish(self.tb3_move_cmd)
+                self.rotate()
                 rospy.signal_shutdown('Passed Intersection!')
                 rospy.on_shutdown(self.myhook)
 
@@ -181,6 +194,8 @@ class Run_Node(Data):
             types.MOVING: self.Start,
             types.ENTER_INTERSECTION: self.Enter_intersection,
             types.PASS_INTERSECTION: self.Pass_intersection,
+            types.PLATOONING: self.Platooning,
+            types.MOVING_NEXT: self.Enter_intersection,
             types.STOP: self.Stop,
         }.get(x, self.Stop)()
 
@@ -197,6 +212,8 @@ class Run_Node(Data):
             return types.DIR_DOWN
 
 
+####################### calculate the distance
+
     def check_abs(self, x, y):
         if abs(x) > abs(y):
             return True
@@ -210,6 +227,17 @@ class Run_Node(Data):
         if closest_values:
             return max(closest_values) if t > 0 else min(closest_values)
         return 0
+
+    def calc_to_safe_distance(self):
+        if self.direction == types.DIR_LEFT or self.direction == types.DIR_DOWN:
+            return abs(abs(self.prior_position) + self.safe_region)
+        else:
+            return abs(self.prior_position - self.safe_region)
+
+    def calc_to_collision_distance(self):
+        return self.get_distance(self.position, self.safe_region)
+
+##################################### Moving function
 
     def publish_signal(self, x):
         self.signal = x
@@ -228,7 +256,6 @@ class Run_Node(Data):
         # set speed
         self.publish_speed_signal(0.0)
 
-
     # Enter and Pass intersection currently is the same as Start
     def Enter_intersection(self):
         # assign random speed (could add acceleration speed later)
@@ -239,6 +266,10 @@ class Run_Node(Data):
         # assign random speed (could add acceleration speed later)
         self.publish_speed_signal(self.speed)
 
+
+    def Platooning(self):
+        # assign random speed (could add acceleration speed later)
+        self.publish_speed_signal(self.speed)
 
 
     def rotate(self):
@@ -267,20 +298,22 @@ class Run_Node(Data):
 
     def reached_destination(self):
         if self.signal == types.PASS_INTERSECTION:
-            if self.direction == types.DIR_LEFT or self.direction == types.DIR_RIGHT:
-                if abs(self.current_position[0]) > abs(self.destination[0]):
-                    return True
-            else:
-                if abs(self.current_position[1]) > abs(self.destination[1]):
-                    return True
+            self.end_destination = self.destination[0] if self.verticle_direction() else self.destination[1]
+
+            if abs(self.position) > (abs(self.end_destination) - 0.5):
+                return True
         return False
 
-    # callback function
+    def verticle_direction(self):
+        if self.direction == types.DIR_LEFT or self.direction == types.DIR_RIGHT:
+            return True
+        return False
+
+########################################### callback function
     def callback_odom(self, msg):
         self.current_position[0], self.current_position[1] = msg.pose.pose.position.x, msg.pose.pose.position.y
         rot_q = msg.pose.pose.orientation
         (roll, pitch, self.rotation) = euler_from_quaternion([rot_q.x, rot_q.y, rot_q.z, rot_q.w])
-
 
     def callback_signal(self, msg):
         self.signal = msg.data
@@ -297,3 +330,5 @@ class Run_Node(Data):
 
     def callback_prior_speed(self, msg):
         self.prior_speed = msg.linear.x
+        if self.prior_speed != 0.0:
+            self.saved_prior_speed = self.prior_speed
