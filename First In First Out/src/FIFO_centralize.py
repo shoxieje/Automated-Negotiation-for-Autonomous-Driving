@@ -132,8 +132,6 @@ class IntersectionAgent:
         return all(a == x[0] and a == types.PASS_INTERSECTION for a in x)
 
     def check_passed(self, first):
-
-
         if self.direction[first] == types.DIR_LEFT or self.direction[first] == types.DIR_DOWN:
             if self.current_dist[first] <= -self.safe_region:
                 self.state[first] = types.PASS_INTERSECTION
