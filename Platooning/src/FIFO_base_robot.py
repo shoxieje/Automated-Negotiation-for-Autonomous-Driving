@@ -175,16 +175,21 @@ class Run_Node(Data):
                 self.in_front_moved = False
                 self.publish_signal(types.MOVING)
 
-            # elif self.prior_command == types.PLATOONING:
-            #     self.in_front_moved = False
-            #     self.publish_signal(types.PLATOONING)
 
             # * choose_status is working
             self.choose_status(self.signal)
 
             # * Shutdown the node when it reaches the destination
             if self.reached_destination():
-                self.rotate()
+                # self.rotate()
+                self.publish_speed_signal(0.0)
+                output_file = open("../catkin_ws/src/turtlebot3_simulations/turtlebot3_gazebo/robots_info.txt", "a+")
+                if self.verticle_direction():
+                    self.total_dist = abs(self.initial_position[0]) + abs(self.destination[0])
+                else:
+                    self.total_dist = abs(self.initial_position[1]) + abs(self.destination[1])
+                output_file.write('Robot {} with the final speed {}, the total travel distance {} and total time {}\n-----------------------------\n'.format(self.name, self.speed, self.total_dist, rospy.get_time()))
+                output_file.close()
                 rospy.signal_shutdown('Passed Intersection!')
                 rospy.on_shutdown(self.myhook)
 
