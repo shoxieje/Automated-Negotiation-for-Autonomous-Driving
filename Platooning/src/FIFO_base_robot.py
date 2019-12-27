@@ -55,6 +55,8 @@ class Run_Node(Data):
 
         self.end_destination = 0.0
 
+        self.changed_speed_arr = []
+
         # self.speed = 0.15
 
         print('Robot {}: {}'.format(self.name, self.speed))
@@ -88,6 +90,8 @@ class Run_Node(Data):
         # id of the vehicles in front
         self.in_front = None
         self.prior_command = ''
+
+        self.add_init_speed = False
 
         self.other_location = []
 
@@ -149,7 +153,14 @@ class Run_Node(Data):
                 if self.get_distance(self.position, self.prior_position) <= (self.safe_distance + 0.1):
                     # make sure the prior speed doesn't change
                     if self.speed > self.prior_speed and self.prior_speed != 0.0:
+                        if not self.add_init_speed:
+                            self.add_init_speed  = True
+                            self.changed_speed_arr.append([self.speed, 0.0])
+                            
                         self.speed = self.prior_speed
+                        self.changed_speed_arr.append([self.speed, rospy.get_time()])
+                        # empty array
+                        print(self.changed_speed_arr)
 
             # handle multiple signal coming from the front vehicle
             if self.prior_command == types.STOP:
@@ -188,7 +199,20 @@ class Run_Node(Data):
                     self.total_dist = abs(self.initial_position[0]) + abs(self.destination[0])
                 else:
                     self.total_dist = abs(self.initial_position[1]) + abs(self.destination[1])
-                output_file.write('Robot {} with the final speed {}, the total travel distance {} and total time {}\n-----------------------------\n'.format(self.name, self.speed, self.total_dist, rospy.get_time()))
+
+                txt_output = ""
+
+                for i in range(len(self.changed_speed_arr)):
+                    print(self.changed_speed_arr)
+                    txt_output += "the speed {} at {}".format(self.changed_speed_arr[i][0], self.changed_speed_arr[i][1])
+                    if i != len(self.changed_speed_arr) - 1:
+                        txt_output += ", "
+                
+                if not self.changed_speed_arr:
+                    txt_output += "the speed of {}".format(self.speed)
+
+                
+                output_file.write('Robot {} with {}, the total travel distance {} and total time {}\n-----------------------------\n'.format(self.name, txt_output, self.total_dist, rospy.get_time()))
                 output_file.close()
                 rospy.signal_shutdown('Passed Intersection!')
                 rospy.on_shutdown(self.myhook)
