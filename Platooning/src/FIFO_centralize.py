@@ -49,6 +49,12 @@ class IntersectionAgent:
         self.prev_platoon = None
         self.platoon_index = 1
 
+        self.opposite_dir = ''
+        self.opp_dir_arr = []
+        self.opp_pos_arr = []
+        self.first_opp_vehicle = 0
+        self.min_pos_opp = 0.0
+        self.min_once = True
         # position and speed of robots
         for i in range(self.total_robots):
             self.odom[i] = rospy.Subscriber('/tb3_' + str(i) + '/odom', Odometry, self.callback_odom, (i))
@@ -101,6 +107,23 @@ class IntersectionAgent:
                 if abs(self.current_dist[self.active_queue[0]]) <= (self.collision_region + 0.05) and not self.entered_once:
                     self.entered_once = True
                     self.state[self.active_queue[0]] = types.ENTER_INTERSECTION
+
+                    # handle opposite direction
+                    self.opposite_dir = self.detect_opposite_dir(self.direction[self.active_queue[0]])
+
+                    # get the index of all opposite direction vehicles
+                    self.opp_dir_arr = [i for i, x in enumerate(self.direction) if x == self.opposite_dir and (self.state[i] == types.MOVING or self.state[i] == types.STOP)]
+
+                    for i in self.opp_dir_arr:
+                        if self.min_pos_opp > abs(self.current_dist[i]) or self.min_once:
+                            self.min_once = False
+                            self.min_pos_opp = abs(self.current_dist[i])
+                            self.first_opp_vehicle = i
+
+                    # self.first_opp_vehicle = self.current_dist.index(min([abs(x) for i, x in enumerate(self.current_dist) if i in self.opp_dir_arr]))
+
+                    print(self.first_opp_vehicle)
+
                     if self.added_to_graph[self.active_queue[0]] == False:
                         self.added_to_graph[self.active_queue[0]] = True
                         for i in self.vertices:
@@ -115,6 +138,7 @@ class IntersectionAgent:
                             output_file.close()
 
                 if self.active_queue[1:]:
+                    # ? unnecessary stuff, needing reducing
                     if types.PLATOONING in self.state:
                         if self.prev_platoon in self.active_queue:
                             self.platoon_index += 1
@@ -154,11 +178,13 @@ class IntersectionAgent:
                 self.state[first] = types.PASS_INTERSECTION
                 self.active_queue.pop(0)
                 self.entered_once = False
+                self.min_once = True
         else:
             if self.current_dist[first] >= self.safe_region:
                 self.state[first] = types.PASS_INTERSECTION
                 self.active_queue.pop(0)
                 self.entered_once = False
+                self.min_once = True
 
     def myhook(self):
         print("shutdown time!")
@@ -171,6 +197,13 @@ class IntersectionAgent:
     def callback_state(self, msg, args):
         self.state[args] = msg.data
 
+    def detect_opposite_dir(self, x):
+        return {
+            types.DIR_DOWN: types.DIR_UP,
+            types.DIR_UP: types.DIR_DOWN,
+            types.DIR_LEFT: types.DIR_RIGHT,
+            types.DIR_RIGHT: types.DIR_LEFT
+        }.get(x, '')
 
 
 if __name__ == "__main__":
