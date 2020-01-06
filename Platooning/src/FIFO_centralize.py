@@ -7,11 +7,24 @@ from nav_msgs.msg import Odometry
 import ActionType as types
 from rocon_std_msgs.msg._StringArray import StringArray
 from Directed_Graph import *
+from openpyxl import Workbook, load_workbook
 
 class IntersectionAgent:
     def __init__(self, total_robots):
         rospy.init_node('centercontrol', anonymous=True, disable_signals=True)
         self.total_robots = total_robots
+
+        workbook = load_workbook(filename="../catkin_ws/src/turtlebot3_simulations/turtlebot3_gazebo/data_recorded.xlsx")
+        sheet = workbook.active
+
+        # working with workbook
+        for i in range(self.total_robots):
+            sheet["A{}".format(i + 2)] = i
+
+        sheet["B1"] = "Time"
+        sheet["C1"] = "Avg. Speed"
+        sheet["D1"] = "Initial Speed"
+        sheet["E1"] = "Travel Distance"
 
         # we can have a function to calculate these value
         self.add_to_queue_distance = 4.0
@@ -90,8 +103,20 @@ class IntersectionAgent:
         self.state = [types.MOVING] * self.total_robots
         print(self.direction)
 
+        self.added_to_speed = False
+
         while not rospy.is_shutdown():
             self.total.publish(self.direction)
+
+            # add speed to worksheet once
+            if not self.added_to_speed:
+                if not 0.0 in self.speed:
+                    self.added_to_speed = True
+                    for i in range(self.total_robots):
+                        sheet["D{}".format(i + 2)] = self.speed[i]
+                    workbook.save(filename="../catkin_ws/src/turtlebot3_simulations/turtlebot3_gazebo/data_recorded.xlsx")
+
+
             for i in range(self.total_robots):
                 # get the current distance to target
                 self.current_dist[i] = self.pos_x[i] if self.direction[i] == types.DIR_LEFT or self.direction[i] == types.DIR_RIGHT else self.pos_y[i]
@@ -175,6 +200,7 @@ class IntersectionAgent:
             print(self.state)
 
             if self.all_same(self.state):
+                workbook.save(filename="data_recorded.xlsx")
                 rospy.signal_shutdown('No Vehicles Available in the Intersection!')
                 rospy.on_shutdown(self.myhook)
             else:

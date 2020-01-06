@@ -12,6 +12,7 @@ from FIFO_base_info import Data
 from tf.transformations import euler_from_quaternion
 
 from rocon_std_msgs.msg._StringArray import StringArray
+from openpyxl import Workbook, load_workbook
 
 class Run_Node(Data):
     def __init__(self, name, init_position, destination):
@@ -192,14 +193,25 @@ class Run_Node(Data):
 
             # * Shutdown the node when it reaches the destination
             if self.reached_destination():
-                # self.rotate()
-                self.publish_speed_signal(0.0)
-                output_file = open("../catkin_ws/src/turtlebot3_simulations/turtlebot3_gazebo/robots_info.txt", "a+")
+                workbook = load_workbook(filename="../catkin_ws/src/turtlebot3_simulations/turtlebot3_gazebo/data_recorded.xlsx")
+                sheet = workbook.active
+
                 if self.verticle_direction():
                     self.total_dist = abs(self.initial_position[0]) + abs(self.destination[0])
                 else:
                     self.total_dist = abs(self.initial_position[1]) + abs(self.destination[1])
+                
+                # record time, speed and distance
+                sheet["B{}".format(int(self.name) + 2)] = rospy.get_time()
+                sheet["E{}".format(int(self.name) + 2)] = self.total_dist
+                sheet["C{}".format(int(self.name) + 2)] = round(self.total_dist / rospy.get_time(), 3)
+                
+                workbook.save(filename="../catkin_ws/src/turtlebot3_simulations/turtlebot3_gazebo/data_recorded.xlsx")
 
+                # self.rotate()
+                self.publish_speed_signal(0.0)
+                output_file = open("../catkin_ws/src/turtlebot3_simulations/turtlebot3_gazebo/robots_info.txt", "a+")
+                
                 txt_output = ""
 
                 for i in range(len(self.changed_speed_arr)):
