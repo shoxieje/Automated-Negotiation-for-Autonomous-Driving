@@ -21,7 +21,8 @@ class IntersectionAgent:
         # initialize attribute related to vehicles
         self.pos_x = [0.0] * self.total_robots
         self.pos_y = [0.0] * self.total_robots
-        # self.pos_z = [0.0] * self.total_robots
+        self.speed = [0.0] * self.total_robots
+
         self.direction = [''] * self.total_robots
         self.command = [None] * self.total_robots
         self.position = [None] * self.total_robots
@@ -47,17 +48,20 @@ class IntersectionAgent:
         self.entered_once = False
 
         self.prev_platoon = None
-        self.platoon_index = 1
+        self.platoon_index = 0
 
         self.opposite_dir = ''
         self.opp_dir_arr = []
         self.opp_pos_arr = []
-        self.first_opp_vehicle = 0
+        self.first_opp_vehicle = None
         self.min_pos_opp = 0.0
         self.min_once = True
         # position and speed of robots
         for i in range(self.total_robots):
+            # position and speed
             self.odom[i] = rospy.Subscriber('/tb3_' + str(i) + '/odom', Odometry, self.callback_odom, (i))
+            self.cmd_vel = rospy.Subscriber('/tb3_' + str(i) + '/cmd_vel', Twist, self.callback_cmd, (i))
+
             self.position[i] = rospy.wait_for_message('/tb3_' + str(i) + '/direction', String)
             self.direction[i] = self.position[i].data
             self.command[i] = rospy.Publisher('tb3_' + str(i) + '_command', String, queue_size=15)
@@ -120,9 +124,17 @@ class IntersectionAgent:
                             self.min_pos_opp = abs(self.current_dist[i])
                             self.first_opp_vehicle = i
 
-                    # self.first_opp_vehicle = self.current_dist.index(min([abs(x) for i, x in enumerate(self.current_dist) if i in self.opp_dir_arr]))
+                    if self.first_opp_vehicle is not None:
+                        self.t1 = self.calc_to_safe_distance(self.active_queue[0]) / self.speed[self.active_queue[0]]
+                        self.t2 = self.calc_to_collision_distance(self.first_opp_vehicle) / self.speed[self.first_opp_vehicle]
 
-                    print(self.first_opp_vehicle)
+                        if self.t1 >= self.t2:
+                            self.state[self.first_opp_vehicle] = types.ENTER_INTERSECTION
+                            self.active_queue.pop(self.active_queue.index(self.first_opp_vehicle))
+                            self.active_queue.insert(len(self.state) - 1 - self.state[::-1].index(types.ENTER_INTERSECTION), self.first_opp_vehicle)
+                            print(self.active_queue)
+                    
+                    self.first_opp_vehicle = None
 
                     if self.added_to_graph[self.active_queue[0]] == False:
                         self.added_to_graph[self.active_queue[0]] = True
@@ -138,12 +150,11 @@ class IntersectionAgent:
                             output_file.close()
 
                 if self.active_queue[1:]:
-                    # ? unnecessary stuff, needing reducing
                     if types.PLATOONING in self.state:
                         if self.prev_platoon in self.active_queue:
                             self.platoon_index += 1
                         else:
-                            self.platoon_index = 1
+                            self.platoon_index = self.state.count(types.ENTER_INTERSECTION)
                         
                         self.prev_platoon = self.active_queue[self.active_queue.index(self.state.index(types.PLATOONING))]
                         self.active_queue.pop(self.active_queue.index(self.state.index(types.PLATOONING)))
@@ -151,7 +162,7 @@ class IntersectionAgent:
                         self.state[self.state.index(types.PLATOONING)] = types.MOVING_NEXT
 
                     for i in self.active_queue[1:]:
-                        if abs(self.current_dist[i]) <= self.collision_region and self.state[i] != types.PLATOONING and self.state[i] != types.MOVING_NEXT:
+                        if abs(self.current_dist[i]) <= self.collision_region and self.state[i] != types.PLATOONING and self.state[i] != types.MOVING_NEXT and self.state[i] != types.ENTER_INTERSECTION:
                             self.state[i] = types.STOP
                             
                 # check if the first vehicle from the queue has passed the threshold yet
@@ -189,6 +200,29 @@ class IntersectionAgent:
     def myhook(self):
         print("shutdown time!")
 
+    def detect_opposite_dir(self, x):
+        return {
+            types.DIR_DOWN: types.DIR_UP,
+            types.DIR_UP: types.DIR_DOWN,
+            types.DIR_LEFT: types.DIR_RIGHT,
+            types.DIR_RIGHT: types.DIR_LEFT
+        }.get(x, '')
+
+
+    def calc_to_safe_distance(self, x):
+        if self.direction[x] == types.DIR_LEFT or self.direction[x] == types.DIR_DOWN:
+            return abs(abs(self.current_dist[x]) + self.safe_region)
+        else:
+            return abs(self.current_dist[x] - self.safe_region)
+
+    def calc_to_collision_distance(self, x):
+        return self.get_distance(self.current_dist[x], self.safe_region)
+
+
+    def get_distance(self, a, b):
+        return abs(abs(a) - abs(b))
+
+
     def callback_odom(self, msg, args):
         self.pos_x[args] = msg.pose.pose.position.x
         self.pos_y[args] = msg.pose.pose.position.y
@@ -197,13 +231,10 @@ class IntersectionAgent:
     def callback_state(self, msg, args):
         self.state[args] = msg.data
 
-    def detect_opposite_dir(self, x):
-        return {
-            types.DIR_DOWN: types.DIR_UP,
-            types.DIR_UP: types.DIR_DOWN,
-            types.DIR_LEFT: types.DIR_RIGHT,
-            types.DIR_RIGHT: types.DIR_LEFT
-        }.get(x, '')
+    def callback_cmd(self, msg, args):
+        if msg.linear.x != 0.0:
+            self.speed[args] = msg.linear.x
+
 
 
 if __name__ == "__main__":
