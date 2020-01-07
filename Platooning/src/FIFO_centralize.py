@@ -27,7 +27,7 @@ class IntersectionAgent:
         sheet["E1"] = "Travel Distance"
 
         # we can have a function to calculate these value
-        self.add_to_queue_distance = 4.0
+        self.add_to_queue_distance = 6.0
         self.collision_region = 1.0
         self.safe_region = 0.5
 
@@ -156,7 +156,7 @@ class IntersectionAgent:
                         if self.t1 >= self.t2:
                             self.state[self.first_opp_vehicle] = types.ENTER_INTERSECTION
                             self.active_queue.pop(self.active_queue.index(self.first_opp_vehicle))
-                            self.active_queue.insert(len(self.state) - 1 - self.state[::-1].index(types.ENTER_INTERSECTION), self.first_opp_vehicle)
+                            self.active_queue.insert(1, self.first_opp_vehicle)
                             print(self.active_queue)
                     
                     self.first_opp_vehicle = None
@@ -180,7 +180,8 @@ class IntersectionAgent:
                             self.platoon_index += 1
                         else:
                             self.platoon_index = self.state.count(types.ENTER_INTERSECTION)
-                        
+
+
                         self.prev_platoon = self.active_queue[self.active_queue.index(self.state.index(types.PLATOONING))]
                         self.active_queue.pop(self.active_queue.index(self.state.index(types.PLATOONING)))
                         self.active_queue.insert(self.platoon_index, self.state.index(types.PLATOONING))
