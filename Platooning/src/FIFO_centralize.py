@@ -14,7 +14,7 @@ class IntersectionAgent:
         rospy.init_node('centercontrol', anonymous=True, disable_signals=True)
         self.total_robots = total_robots
 
-        workbook = load_workbook(filename="../catkin_ws/src/turtlebot3_simulations/turtlebot3_gazebo/data_recorded.xlsx")
+        workbook = Workbook()
         sheet = workbook.active
 
         # working with workbook
@@ -27,7 +27,7 @@ class IntersectionAgent:
         sheet["E1"] = "Travel Distance"
 
         # we can have a function to calculate these value
-        self.add_to_queue_distance = 6.0
+        self.add_to_queue_distance = 5.2
         self.collision_region = 1.0
         self.safe_region = 0.5
 
@@ -144,14 +144,19 @@ class IntersectionAgent:
                     self.opp_dir_arr = [i for i, x in enumerate(self.direction) if x == self.opposite_dir and (self.state[i] == types.MOVING or self.state[i] == types.STOP)]
 
                     for i in self.opp_dir_arr:
-                        if self.min_pos_opp > abs(self.current_dist[i]) or self.min_once:
+                        if self.min_once or self.min_pos_opp > abs(self.current_dist[i]):
                             self.min_once = False
                             self.min_pos_opp = abs(self.current_dist[i])
                             self.first_opp_vehicle = i
 
                     if self.first_opp_vehicle is not None:
+                        ff = open('../catkin_ws/src/turtlebot3_simulations/turtlebot3_gazebo/debug.txt', 'a')
                         self.t1 = self.calc_to_safe_distance(self.active_queue[0]) / self.speed[self.active_queue[0]]
                         self.t2 = self.calc_to_collision_distance(self.first_opp_vehicle) / self.speed[self.first_opp_vehicle]
+
+                        ff.write("Robot {} with the opposite {} with our speed {} and their speed {}, t1 {} and t2 {}\n".format(self.active_queue[0], self.first_opp_vehicle, self.speed[self.active_queue[0]], self.speed[self.first_opp_vehicle], self.t1, self.t2))
+
+                        ff.close()
 
                         if self.t1 >= self.t2:
                             self.state[self.first_opp_vehicle] = types.ENTER_INTERSECTION
