@@ -43,7 +43,7 @@ class Run_Node(Data):
 
         self.same_direction = []
 
-        self.safe_distance = 0.35
+        self.safe_distance = 0.25
 
         # assign speed
         self.tb3_move_cmd = Twist()
@@ -170,7 +170,7 @@ class Run_Node(Data):
                      # stop immendiately
                     self.publish_signal(types.STOP)
 
-            elif (self.prior_command == types.ENTER_INTERSECTION or self.prior_command == types.MOVING_NEXT) and self.entered_once:
+            elif (self.prior_command == types.ENTER_INTERSECTION or self.prior_command == types.PLATOONING) and self.entered_once:
                 self.entered_once = False
                 # start moving when the other vehicles enter the area
 
