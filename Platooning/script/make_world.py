@@ -21,8 +21,11 @@ f = open("../launch/FIFO_launch_{0}/FIFO_load_world_{0}.launch".format(num), "w+
 
 file_input = "<launch>\n\t<arg name='model' default='$(env TURTLEBOT3_MODEL)' doc='model type [burger, waffle, waffle_pi]'/>\n\n\n"
 
-pos_x = [-4.75, -0.25, 4.75, 0.25]
-pos_y = [0.25, -4.75, -0.25, 4.75]
+init_position = 4 + 0.5 * (num // 10) + 0.05 * (num % 10)
+
+
+pos_x = [-init_position, -0.25, init_position, 0.25]
+pos_y = [0.25, -init_position, -0.25, init_position]
 pos_yaw = [-0.1, 1.522, -3.15, -1.56]
 pos_pitch = 0.0
 pos_z = 0.0

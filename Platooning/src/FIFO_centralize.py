@@ -27,7 +27,8 @@ class IntersectionAgent:
         # sheet["E1"] = "Travel Distance"
 
         # we can have a function to calculate these value
-        self.add_to_queue_distance = 4.1
+        self.add_to_queue_distance = 3.1 + 0.5 * (self.total_robots // 10) + 0.05 * (self.total_robots % 10)
+        print(self.add_to_queue_distance)
         self.collision_region = 1.0
         self.safe_region = 0.5
 
@@ -182,14 +183,12 @@ class IntersectionAgent:
                             output_file.close()
 
                 if self.active_queue[1:]:
+                    self.platoon_dict = {}
                     self.platoon_queue = [i for i, x in enumerate(self.state) if x == types.PLATOONING]
                     print(self.platoon_queue)
 
                     for platoon_vehicle in self.platoon_queue:
                         self.platoon_dict[platoon_vehicle] = self.calc_to_safe_distance(platoon_vehicle) / self.speed[platoon_vehicle]
-
-                    if not self.platoon_queue:
-                        self.platoon_dict = {}
 
                     self.sorted_platoon_dict = sorted(self.platoon_dict.items(), key=lambda x: x[1])
 
@@ -216,11 +215,13 @@ class IntersectionAgent:
                             self.state[i] = types.STOP
                     
                     self.saved_sorted_platoon_dict = self.sorted_platoon_dict
-                            
+                
                 # check if the first vehicle from the queue has passed the threshold yet
-                for i, x in enumerate(self.state):
-                    if x == types.ENTER_INTERSECTION:
-                        self.check_passed(i)
+                if len(self.active_queue) <= 2:
+                    self.check_passed(self.active_queue[0])
+                else:
+                    for i in range(2):
+                        self.check_passed(self.active_queue[i])
 
             # public commands to robots
             for i in range(self.total_robots):
@@ -242,13 +243,13 @@ class IntersectionAgent:
         if self.direction[first] == types.DIR_LEFT or self.direction[first] == types.DIR_DOWN:
             if self.current_dist[first] <= -self.safe_region:
                 self.state[first] = types.PASS_INTERSECTION
-                self.active_queue.pop(0)
+                self.active_queue.pop(self.active_queue.index(first))
                 self.entered_once = False
                 self.min_once = True
         else:
             if self.current_dist[first] >= self.safe_region:
                 self.state[first] = types.PASS_INTERSECTION
-                self.active_queue.pop(0)
+                self.active_queue.pop(self.active_queue.index(first))
                 self.entered_once = False
                 self.min_once = True
 

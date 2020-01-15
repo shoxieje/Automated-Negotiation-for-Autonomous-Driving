@@ -31,11 +31,14 @@ file_input += "if __name__ == \"__main__\":\n"
 
 individual_input = [None] * num
 
-pos_x_init = [-4.75, -0.25, 4.75, 0.25]
-pos_y_init = [0.25, -4.75, -0.25, 4.75]
+init_position = 4 + 0.5 * (num // 10) + 0.05 * (num % 10)
+destination_position = init_position + 5.0
 
-pos_x_destination = [8.25, -0.25, -8.25, 0.25]
-pos_y_destination = [0.25, 8.25, -0.25, -8.25]
+pos_x_init = [-init_position, -0.25, init_position, 0.25]
+pos_y_init = [0.25, -init_position, -0.25, init_position]
+
+pos_x_destination = [destination_position, -0.25, -destination_position, 0.25]
+pos_y_destination = [0.25, destination_position, -0.25, -destination_position]
 
 
 for i in range(num):
