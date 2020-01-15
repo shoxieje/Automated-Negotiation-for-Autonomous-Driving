@@ -14,17 +14,17 @@ class IntersectionAgent:
         rospy.init_node('centercontrol', anonymous=True, disable_signals=True)
         self.total_robots = total_robots
 
-        workbook = load_workbook(filename="../catkin_ws/src/turtlebot3_simulations/turtlebot3_gazebo/data_recorded.xlsx")
-        sheet = workbook.active
+        # workbook = load_workbook(filename="../catkin_ws/src/turtlebot3_simulations/turtlebot3_gazebo/data_recorded.xlsx")
+        # sheet = workbook.active
 
         # working with workbook
-        for i in range(self.total_robots):
-            sheet["A{}".format(i + 2)] = i
+        # for i in range(self.total_robots):
+        #     sheet["A{}".format(i + 2)] = i
 
-        sheet["B1"] = "Time"
-        sheet["C1"] = "Avg. Speed"
-        sheet["D1"] = "Initial Speed"
-        sheet["E1"] = "Travel Distance"
+        # sheet["B1"] = "Time"
+        # sheet["C1"] = "Avg. Speed"
+        # sheet["D1"] = "Initial Speed"
+        # sheet["E1"] = "Travel Distance"
 
         # we can have a function to calculate these value
         self.add_to_queue_distance = 4.1
@@ -68,6 +68,7 @@ class IntersectionAgent:
         self.platoon_dict = {}
         self.sorted_platoon_dict = []
         self.enter_intersection = 0
+        self.saved_sorted_platoon_dict = []
 
         self.opposite_dir = ''
         self.opp_dir_arr = []
@@ -118,9 +119,9 @@ class IntersectionAgent:
             if not self.added_to_speed:
                 if not 0.0 in self.speed:
                     self.added_to_speed = True
-                    for i in range(self.total_robots):
-                        sheet["D{}".format(i + 2)] = self.speed[i]
-                    workbook.save(filename="../catkin_ws/src/turtlebot3_simulations/turtlebot3_gazebo/data_recorded.xlsx")
+                    # for i in range(self.total_robots):
+                    #     sheet["D{}".format(i + 2)] = self.speed[i]
+                    # workbook.save(filename="../catkin_ws/src/turtlebot3_simulations/turtlebot3_gazebo/data_recorded.xlsx")
 
 
             for i in range(self.total_robots):
@@ -182,9 +183,13 @@ class IntersectionAgent:
 
                 if self.active_queue[1:]:
                     self.platoon_queue = [i for i, x in enumerate(self.state) if x == types.PLATOONING]
+                    print(self.platoon_queue)
 
                     for platoon_vehicle in self.platoon_queue:
                         self.platoon_dict[platoon_vehicle] = self.calc_to_safe_distance(platoon_vehicle) / self.speed[platoon_vehicle]
+
+                    if not self.platoon_queue:
+                        self.platoon_dict = {}
 
                     self.sorted_platoon_dict = sorted(self.platoon_dict.items(), key=lambda x: x[1])
 
@@ -194,17 +199,23 @@ class IntersectionAgent:
                         self.total_intersection = 0
 
                     for i in self.sorted_platoon_dict:
-                        if not self.allocate_once[i]:
-                            self.allocate_once[i] = True
-                            self.active_queue.remove(i[0])
-                            self.active_queue.insert(self.total_intersection, i[0])
+                        value = i[0]
+                        if len(self.saved_sorted_platoon_dict) < len(self.sorted_platoon_dict):
+                            self.allocate_once[value] = False
+
+                        if not self.allocate_once[value]:
+                            self.allocate_once[value] = True
+                            self.active_queue.remove(value)
+                            self.active_queue.insert(self.total_intersection, value)
                             self.total_intersection += 1
 
-                    print(self.platoon_queue)
+                    print(self.sorted_platoon_dict)
 
                     for i in self.active_queue[1:]:
                         if abs(self.current_dist[i]) <= self.collision_region and self.state[i] != types.PLATOONING and self.state[i] != types.MOVING_NEXT and self.state[i] != types.ENTER_INTERSECTION:
                             self.state[i] = types.STOP
+                    
+                    self.saved_sorted_platoon_dict = self.sorted_platoon_dict
                             
                 # check if the first vehicle from the queue has passed the threshold yet
                 for i, x in enumerate(self.state):
@@ -218,7 +229,7 @@ class IntersectionAgent:
             print(self.state)
 
             if self.all_same(self.state):
-                workbook.save(filename="data_recorded.xlsx")
+                # workbook.save(filename="data_recorded.xlsx")
                 rospy.signal_shutdown('No Vehicles Available in the Intersection!')
                 rospy.on_shutdown(self.myhook)
             else:
