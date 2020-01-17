@@ -67,7 +67,7 @@ class Run_Node(Data):
         self.direction = self.calc_direction(self.initial_position, self.destination)
 
         while self.ready == types.NOT_READY:
-            self.location.publish(self.direction)
+                self.location.publish(self.direction)
 
         # unsubscribe to system signal
         self.sys_ready.unregister()
@@ -243,14 +243,38 @@ class Run_Node(Data):
 
     # calculate the direction
     def calc_direction(self, start, end):
-        if start[0] < end[0] and self.check_abs(start[0], start[1]):
-            return types.DIR_RIGHT
-        elif start[0] > end[0] and self.check_abs(start[0], start[1]):
-            return types.DIR_LEFT
-        elif start[1] < end[1] and self.check_abs(start[1], start[0]):
-            return types.DIR_UP
+        if start[1] == end[1]:
+            if start[0] < 0:
+                return types.DIR_RIGHT
+            else:
+                return types.DIR_LEFT
+        elif start[0] == end[0]:
+            if start[1] < 0:
+                return types.DIR_UP
+            else:
+                return types.DIR_DOWN
+        elif start[1] != end[1]:
+            if start[0] > 0:
+                if end[1] > 0:
+                    return types.DIR_LEFT_UP
+                else:
+                    return types.DIR_LEFT_DOWN
+            else:
+                if end[1] > 0:
+                    return types.DIR_RIGHT_UP
+                else:
+                    return types.DIR_RIGHT_DOWN
         else:
-            return types.DIR_DOWN
+            if start[1] < 0:
+                if start[0] < 0:
+                    return types.DIR_UP_LEFT
+                else:
+                    return types.DIR_UP_RIGHT
+            else:
+                if start[0] < 0:
+                    return types.DIR_DOWN_LEFT
+                else:
+                    return types.DIR_DOWN_RIGHT
 
 
 ####################### calculate the distance
