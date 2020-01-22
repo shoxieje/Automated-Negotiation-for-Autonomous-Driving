@@ -33,6 +33,7 @@ class Run_Node(Data):
         self.catch_up = None
         self.prior_speed = 0.0
 
+
         self.saved_prior_speed = 0.0
 
         # speed publisher
@@ -48,7 +49,7 @@ class Run_Node(Data):
         # assign speed
         self.tb3_move_cmd = Twist()
         self.max_speed = 0.3
-        self.speed = round(random.uniform(0.1, 0.5), 2)
+        self.speed = round(random.uniform(0.3, 0.5), 2)
 
         if self.speed > self.max_speed:
             self.speed = self.max_speed
@@ -56,7 +57,11 @@ class Run_Node(Data):
 
         self.end_destination = 0.0
 
+        self.check_first_direction_once = False
+
         self.changed_speed_arr = []
+
+        self.first_direction_end_position = [0.0] * 2
 
         # self.speed = 0.15
 
@@ -64,10 +69,10 @@ class Run_Node(Data):
 
         # location publisher
         self.location = rospy.Publisher('tb3_' + self.name + '/direction', String, queue_size=5)
-        self.direction = self.calc_direction(self.initial_position, self.destination)
+        self.direction = self.calc_direction()
 
         while self.ready == types.NOT_READY:
-                self.location.publish(self.direction)
+            self.location.publish(self.direction)
 
         # unsubscribe to system signal
         self.sys_ready.unregister()
@@ -82,11 +87,13 @@ class Run_Node(Data):
         # print(self.all_direction)
 
         for i in range(len(self.all_direction)):
-            if self.all_direction[i] == self.direction and str(i) != self.name:
+            if self.all_direction[i][:len(self.direction)] == self.direction[:len(self.all_direction[i])] and str(i) != self.name:
                 self.same_direction.append(i)
 
         self.same_direction_location_x = [0.0] * len(self.same_direction)
         self.same_direction_location_y = [0.0] * len(self.same_direction)
+
+        self.road_distance = 5.0 + len(self.same_direction) * 0.5
 
         # id of the vehicles in front
         self.in_front = None
@@ -95,6 +102,13 @@ class Run_Node(Data):
         self.add_init_speed = False
 
         self.other_location = []
+
+        if self.direction.count('_') == 2:
+            self.turning_distance_far = 0.1 - (self.speed - 0.1) * 1.5
+            self.turning_distance_close = 0.4 + (self.speed - 0.1) * 1.5
+            self.has_turned = False
+
+        print(self.turning_distance_close)
 
         for i in self.same_direction:
             self.other_location.append(rospy.Subscriber('/tb3_' + str(i) + '/odom', Odometry, self.callback_other_odom, (self.same_direction.index(i))))
@@ -161,7 +175,6 @@ class Run_Node(Data):
                         self.speed = self.prior_speed
                         self.changed_speed_arr.append([self.speed, rospy.get_time()])
                         # empty array
-                        print(self.changed_speed_arr)
 
             # handle multiple signal coming from the front vehicle
             if self.prior_command == types.STOP:
@@ -215,7 +228,6 @@ class Run_Node(Data):
                 txt_output = ""
 
                 for i in range(len(self.changed_speed_arr)):
-                    print(self.changed_speed_arr)
                     txt_output += "the speed {} at {}".format(self.changed_speed_arr[i][0], self.changed_speed_arr[i][1])
                     if i != len(self.changed_speed_arr) - 1:
                         txt_output += ", "
@@ -242,39 +254,46 @@ class Run_Node(Data):
 
 
     # calculate the direction
-    def calc_direction(self, start, end):
-        if start[1] == end[1]:
-            if start[0] < 0:
+    def calc_direction(self):
+        if self.initial_position[1] == self.destination[1]:
+            if self.initial_position[0] < 0:
                 return types.DIR_RIGHT
             else:
                 return types.DIR_LEFT
-        elif start[0] == end[0]:
-            if start[1] < 0:
+        elif self.initial_position[0] == self.destination[0]:
+            if self.initial_position[1] < 0:
                 return types.DIR_UP
             else:
                 return types.DIR_DOWN
-        elif start[1] != end[1]:
-            if start[0] > 0:
-                if end[1] > 0:
-                    return types.DIR_LEFT_UP
-                else:
-                    return types.DIR_LEFT_DOWN
-            else:
-                if end[1] > 0:
-                    return types.DIR_RIGHT_UP
-                else:
-                    return types.DIR_RIGHT_DOWN
+
         else:
-            if start[1] < 0:
-                if start[0] < 0:
-                    return types.DIR_UP_LEFT
+            if abs(self.initial_position[0]) < abs(self.initial_position[1]):
+                # up <-> down
+                if self.initial_position[1] > 0:
+                    if self.destination[0] < 0:
+                        return types.DIR_DOWN_LEFT
+                    else:
+                        return types.DIR_DOWN_RIGHT
+
                 else:
-                    return types.DIR_UP_RIGHT
+                    if self.destination[0] < 0:
+                        return types.DIR_UP_LEFT
+                    else:
+                        return types.DIR_UP_RIGHT
+
             else:
-                if start[0] < 0:
-                    return types.DIR_DOWN_LEFT
+                # left <-> right
+                if self.initial_position[0] > 0:
+                    if self.destination[1] < 0:
+                        return types.DIR_LEFT_DOWN
+                    else:
+                        return types.DIR_RIGHT_DOWN
+
                 else:
-                    return types.DIR_DOWN_RIGHT
+                    if self.destination[1] < 0:
+                        return types.DIR_RIGHT_DOWN
+                    else:
+                        return types.DIR_RIGHT_UP
 
 
 ####################### calculate the distance
@@ -338,7 +357,23 @@ class Run_Node(Data):
 
 
     def rotate(self):
-        path_angle = atan2(self.destination[1] - self.current_position[1], self.destination[0] - self.current_position[0])
+        if not self.check_first_direction_once:
+            self.check_first_direction_once = True
+            if abs(self.initial_position[0]) > abs(self.initial_position[1]):
+                if self.initial_position[0] < 0:
+                    self.first_direction_end_position = [self.initial_position[0] + self.road_distance, self.initial_position[1]]
+                else:
+                    self.first_direction_end_position = [self.initial_position[0] - self.road_distance, self.initial_position[1]]
+            else:
+                if self.initial_position[1] < 0:
+                    self.first_direction_end_position = [self.initial_position[0], self.initial_position[1] + self.road_distance]
+                else:
+                    self.first_direction_end_position = [self.initial_position[0], self.initial_position[1] - self.road_distance]
+
+        if not self.has_turned:
+            path_angle = atan2(self.first_direction_end_position[1] - self.current_position[1], self.first_direction_end_position[0] - self.current_position[0])
+        else:
+            path_angle = atan2(self.destination[1] - self.current_position[1], self.destination[0] - self.current_position[0])
 
         self.tb3_move_cmd.angular.z = path_angle - self.rotation
         if self.tb3_move_cmd.angular.z > pi:
@@ -370,9 +405,65 @@ class Run_Node(Data):
         return False
 
     def verticle_direction(self):
-        if self.direction == types.DIR_LEFT or self.direction == types.DIR_RIGHT:
+        if self.direction == types.DIR_LEFT or self.direction == types.DIR_RIGHT or self.direction_with_turning():
             return True
         return False
+
+
+    def direction_with_turning(self):
+        if self.direction.count('_') < 2:
+            return False
+        if self.calc_turned_direction() == types.LEFT or self.calc_turned_direction() == types.RIGHT:
+            return True
+        return False
+
+    def calc_turned_direction(self):
+        if self.has_turned:
+            return self.second_direction
+
+        if self.check_turn():
+            self.has_turned = True
+            return self.second_direction
+        return self.first_direction
+
+    
+    def check_turn(self):
+        self.first_direction = self.direction[self.direction.index('_') + 1 : self.direction.rindex('_')]
+        self.second_direction = self.direction[self.direction.rindex('_') + 1:]
+        if self.first_direction == types.DOWN:
+            if self.second_direction == types.LEFT:
+                if self.current_position[1] < -self.turning_distance_far:
+                    return True
+            elif self.second_direction == types.RIGHT:
+                if self.current_position[1] < self.turning_distance_close:
+                    return True
+
+        elif self.first_direction == types.UP:
+            if self.second_direction == types.RIGHT:
+                if self.current_position[1] > self.turning_distance_far:
+                    return True
+            elif self.second_direction == types.LEFT:
+                if self.current_position[1] > -self.turning_distance_close:
+                    return True
+
+        elif self.first_direction == types.LEFT:
+            if self.second_direction == types.UP:
+                if self.current_position[0] < -self.turning_distance_far:
+                    return True
+            elif self.second_direction == types.DOWN:
+                if self.current_position[0] < self.turning_distance_close:
+                    return True
+
+        else:
+            if self.second_direction == types.DOWN:
+                if self.current_position[0] > self.turning_distance_far:
+                    return True
+            elif self.second_direction == types.UP:
+                if self.current_position[0] > -self.turning_distance_close:
+                    return True
+        return False
+
+
 
 ########################################### callback function
     def callback_odom(self, msg):

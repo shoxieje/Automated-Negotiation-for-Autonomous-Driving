@@ -27,7 +27,14 @@ DIR_DOWN_LEFT = "DIR_DOWN_LEFT"
 DIR_DOWN_RIGHT = "DIR_DOWN_RIGHT"
 
 
+# 4 based path
+UP = "UP"
+LEFT = "LEFT"
+DOWN = "DOWN"
+RIGHT = "RIGHT"
+
 
 # flag
 READY = "READY"
 NOT_READY = "NOT_READY"
+
