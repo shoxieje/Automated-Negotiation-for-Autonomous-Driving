@@ -9,6 +9,8 @@ from rocon_std_msgs.msg._StringArray import StringArray
 from Directed_Graph import *
 from openpyxl import Workbook, load_workbook
 
+from Mutual_function import *
+
 class IntersectionAgent:
     def __init__(self, total_robots):
         rospy.init_node('centercontrol', anonymous=True, disable_signals=True)
@@ -63,6 +65,9 @@ class IntersectionAgent:
 
         self.entered_once = False
 
+        self.turning_distance_far = [0.0] * self.total_robots
+        self.turning_distance_close = [0.0] * self.total_robots
+
         self.prev_platoon = None
         self.platoon_index = 0
         self.platoon_queue = []
@@ -77,6 +82,13 @@ class IntersectionAgent:
         self.first_opp_vehicle = None
         self.min_pos_opp = 0.0
         self.min_once = True
+
+        self.has_turned = [False] * self.total_robots
+        self.first_direction = [''] * self.total_robots
+        self.second_direction = [''] * self.total_robots
+
+        self.turning_control = rospy.Publisher('turning_control', String, queue_size=15)
+
         # position and speed of robots
         for i in range(self.total_robots):
             # position and speed
@@ -88,6 +100,8 @@ class IntersectionAgent:
             self.command[i] = rospy.Publisher('tb3_' + str(i) + '_command', String, queue_size=15)
             self.received_state[i] = rospy.Subscriber('tb3_' + str(i) + '/self_command', String, self.callback_state, (i))
             self.vertices.append(i)
+            self.first_direction[i] = self.direction[i][:self.direction[i].index('_')]
+            self.second_direction[i] = self.direction[i][self.direction[i].index('_') + 1:]
 
 
         for i in self.vertices:
@@ -127,7 +141,7 @@ class IntersectionAgent:
 
             for i in range(self.total_robots):
                 # get the current distance to target
-                self.current_dist[i] = self.pos_x[i] if self.direction[i] == types.DIR_LEFT or self.direction[i] == types.DIR_RIGHT else self.pos_y[i]
+                self.current_dist[i] = self.pos_x[i] if self.verticle_direction(i) else self.pos_y[i]
 
                 print("Robot {}: {} with {}".format(i, abs(self.current_dist[i]), self.direction[i]))
 
@@ -143,6 +157,7 @@ class IntersectionAgent:
             if self.active_queue:
                 if abs(self.current_dist[self.active_queue[0]]) <= (self.collision_region + 0.05) and not self.entered_once:
                     self.entered_once = True
+
                     self.state[self.active_queue[0]] = types.ENTER_INTERSECTION
 
                     # handle opposite direction
@@ -211,17 +226,19 @@ class IntersectionAgent:
                     print(self.sorted_platoon_dict)
 
                     for i in self.active_queue[1:]:
-                        if abs(self.current_dist[i]) <= self.collision_region and self.state[i] != types.PLATOONING and self.state[i] != types.MOVING_NEXT and self.state[i] != types.ENTER_INTERSECTION:
+                        if abs(self.current_dist[i]) <= self.collision_region and self.state[i] != types.PLATOONING and self.state[i] != types.ENTER_INTERSECTION:
                             self.state[i] = types.STOP
                     
                     self.saved_sorted_platoon_dict = self.sorted_platoon_dict
                 
                 # check if the first vehicle from the queue has passed the threshold yet
                 if len(self.active_queue) <= 2:
-                    self.check_passed(self.active_queue[0])
+                    if (self.direction[self.active_queue[0]].count('_') == 1 and self.has_turned[self.active_queue[0]]) or self.direction[self.active_queue[0]].count('_') < 1:
+                        self.check_passed(self.active_queue[0])
                 else:
                     for i in range(2):
-                        self.check_passed(self.active_queue[i])
+                        if (self.direction[i].count('_') == 1 and self.has_turned[i]) or self.direction[i].count('_') < 1:
+                            self.check_passed(self.active_queue[i])
 
             # public commands to robots
             for i in range(self.total_robots):
@@ -240,7 +257,7 @@ class IntersectionAgent:
         return all(a == x[0] and a == types.PASS_INTERSECTION for a in x)
 
     def check_passed(self, first):
-        if self.direction[first] == types.DIR_LEFT or self.direction[first] == types.DIR_DOWN:
+        if self.direction[first] == types.DIR_LEFT or self.direction[first] == types.DIR_DOWN or self.check_second_direction(first):
             if self.current_dist[first] <= -self.safe_region:
                 self.state[first] = types.PASS_INTERSECTION
                 self.active_queue.pop(self.active_queue.index(first))
@@ -253,6 +270,10 @@ class IntersectionAgent:
                 self.entered_once = False
                 self.min_once = True
 
+    
+    def check_second_direction(self, id):
+        return self.second_direction[id] == types.DIR_LEFT or self.second_direction[id] == types.DIR_DOWN
+
     def myhook(self):
         print("shutdown time!")
 
@@ -262,7 +283,7 @@ class IntersectionAgent:
             types.DIR_UP: types.DIR_DOWN,
             types.DIR_LEFT: types.DIR_RIGHT,
             types.DIR_RIGHT: types.DIR_LEFT
-        }.get(x, '')
+        }.get(x[:x.rindex('_')] if x.count('_') == 1 else x, '')
 
 
     def calc_to_safe_distance(self, x):
@@ -272,11 +293,80 @@ class IntersectionAgent:
             return abs(self.current_dist[x] - self.safe_region)
 
     def calc_to_collision_distance(self, x):
-        return self.get_distance(self.current_dist[x], self.safe_region)
+        return get_distance(self.current_dist[x], self.safe_region)
+
+    def verticle_direction(self, id):
+        if self.direction[id] == types.DIR_LEFT or self.direction[id] == types.DIR_RIGHT or self.direction_with_turning(id):
+            return True
+        return False
 
 
-    def get_distance(self, a, b):
-        return abs(abs(a) - abs(b))
+    def direction_with_turning(self, id):
+        if self.direction[id].count('_') < 1:
+            return False
+        if self.calc_turned_direction(id) == types.LEFT or self.calc_turned_direction(id) == types.RIGHT:
+            return True
+        return False
+
+    def calc_turned_direction(self, id):
+        if self.has_turned[id]:
+            return self.second_direction[id]
+
+        if self.check_turn(id):
+            self.has_turned[id] = True
+            return self.second_direction[id]
+
+        return self.first_direction[id]
+
+    
+    def check_turn(self, id):
+        if self.first_direction[id] == types.DOWN:
+            if self.second_direction[id] == types.LEFT:
+                if self.pos_y[id] < -self.turning_distance_far[id]:
+                    return True
+            elif self.second_direction[id] == types.RIGHT:
+                if self.pos_y[id] < self.turning_distance_close[id]:
+                    return True
+
+        elif self.first_direction[id] == types.UP:
+            if self.second_direction[id] == types.RIGHT:
+                if self.pos_y[id] > self.turning_distance_far[id]:
+                    return True
+            elif self.second_direction[id] == types.LEFT:
+                if self.pos_y[id] > -self.turning_distance_close[id]:
+                    return True
+
+        elif self.first_direction[id] == types.LEFT:
+            if self.second_direction[id] == types.UP:
+                if self.pos_x[id] < -self.turning_distance_far[id]:
+                    return True
+            elif self.second_direction[id] == types.DOWN:
+                if self.pos_x[id] < self.turning_distance_close[id]:
+                    return True
+
+        else:
+            if self.second_direction[id] == types.DOWN:
+                if self.pos_x[id] > self.turning_distance_far[id]:
+                    return True
+            elif self.second_direction[id] == types.UP:
+                if self.pos_x[id] > -self.turning_distance_close[id]:
+                    return True
+        return False
+
+
+    def check_turning_far(self, id):
+        if self.first_direction[id] == types.RIGHT:
+            return self.second_direction[id] == types.DOWN
+        elif self.first_direction[id] == types.LEFT:
+            return self.second_direction[id] == types.UP
+        elif self.first_direction[id] == types.DOWN:
+            return self.second_direction[id] == types.LEFT
+        else:
+            return self.second_direction[id] == types.RIGHT
+
+
+    # def get_distance(self, a, b):
+    #     return abs(abs(a) - abs(b))
 
 
     def callback_odom(self, msg, args):
@@ -290,6 +380,8 @@ class IntersectionAgent:
     def callback_cmd(self, msg, args):
         if msg.linear.x != 0.0:
             self.speed[args] = msg.linear.x
+            self.turning_distance_far[args] = 0.1 - (self.speed[args] - 0.1) * 1.5
+            self.turning_distance_close[args] = 0.4 + (self.speed[args] - 0.1) * 1.5
 
 
 

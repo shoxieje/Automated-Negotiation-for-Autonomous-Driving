@@ -11,6 +11,8 @@ import ActionType as types
 from FIFO_base_info import Data
 from tf.transformations import euler_from_quaternion
 
+from Mutual_function import *
+
 from rocon_std_msgs.msg._StringArray import StringArray
 from openpyxl import Workbook, load_workbook
 
@@ -71,6 +73,10 @@ class Run_Node(Data):
         self.location = rospy.Publisher('tb3_' + self.name + '/direction', String, queue_size=5)
         self.direction = self.calc_direction()
 
+        if self.direction.count('_') == 1:
+            self.first_direction = self.direction[:self.direction.index('_')]
+            self.second_direction = self.direction[self.direction.index('_') + 1:]
+
         while self.ready == types.NOT_READY:
             self.location.publish(self.direction)
 
@@ -87,7 +93,7 @@ class Run_Node(Data):
         # print(self.all_direction)
 
         for i in range(len(self.all_direction)):
-            if self.all_direction[i][:len(self.direction)] == self.direction[:len(self.all_direction[i])] and str(i) != self.name:
+            if self.all_direction[i][:len(self.first_direction)] == self.first_direction[:len(self.all_direction[i])] and str(i) != self.name:
                 self.same_direction.append(i)
 
         self.same_direction_location_x = [0.0] * len(self.same_direction)
@@ -103,12 +109,11 @@ class Run_Node(Data):
 
         self.other_location = []
 
-        if self.direction.count('_') == 2:
+        if self.direction.count('_') == 1:
             self.turning_distance_far = 0.1 - (self.speed - 0.1) * 1.5
             self.turning_distance_close = 0.4 + (self.speed - 0.1) * 1.5
             self.has_turned = False
 
-        print(self.turning_distance_close)
 
         for i in self.same_direction:
             self.other_location.append(rospy.Subscriber('/tb3_' + str(i) + '/odom', Odometry, self.callback_other_odom, (self.same_direction.index(i))))
@@ -123,12 +128,12 @@ class Run_Node(Data):
         # method to get the front vehicle id
         if self.verticle_direction():
             self.closest_x = self.find_closest_distance(self.same_direction_location_x, self.initial_position[0])
-            if self.closest_x != 0 and self.get_distance(min(self.same_direction_location_y), self.initial_position[1]) <= 0.2:
+            if self.closest_x != 0 and get_distance(min(self.same_direction_location_y), self.initial_position[1]) <= 0.2:
                 self.in_front = self.same_direction[self.same_direction_location_x.index(self.closest_x)]
 
         else:
             self.closest_y = self.find_closest_distance(self.same_direction_location_y, self.initial_position[1])
-            if self.closest_y != 0 and self.get_distance(min(self.same_direction_location_x), self.initial_position[0]) <= 0.2:
+            if self.closest_y != 0 and get_distance(min(self.same_direction_location_x), self.initial_position[0]) <= 0.2:
                 self.in_front = self.same_direction[self.same_direction_location_y.index(self.closest_y)]
 
         # subscribe to the speed of the vehicle in front
@@ -165,7 +170,7 @@ class Run_Node(Data):
                 else:
                     self.prior_position = self.same_direction_location_y[self.same_direction.index(self.in_front)]
 
-                if self.get_distance(self.position, self.prior_position) <= (self.safe_distance + 0.1):
+                if get_distance(self.position, self.prior_position) <= (self.safe_distance + 0.1):
                     # make sure the prior speed doesn't change
                     if self.speed > self.prior_speed and self.prior_speed != 0.0:
                         if not self.add_init_speed:
@@ -179,7 +184,7 @@ class Run_Node(Data):
             # handle multiple signal coming from the front vehicle
             if self.prior_command == types.STOP:
                 self.in_front_moved = True
-                if self.get_distance(self.prior_position, self.position) <= self.safe_distance:
+                if get_distance(self.prior_position, self.position) <= self.safe_distance:
                      # stop immendiately
                     self.publish_signal(types.STOP)
 
@@ -297,14 +302,13 @@ class Run_Node(Data):
 
 
 ####################### calculate the distance
+    # def check_abs(self, x, y):
+    #     if abs(x) > abs(y):
+    #         return True
+    #     return False
 
-    def check_abs(self, x, y):
-        if abs(x) > abs(y):
-            return True
-        return False
-
-    def get_distance(self, a, b):
-        return abs(abs(a) - abs(b))
+    # def get_distance(self, a, b):
+    #     return abs(abs(a) - abs(b))
 
     def find_closest_distance(self, l, t):
         closest_values = [x for x in l if abs(x) < abs(t)]
@@ -313,13 +317,13 @@ class Run_Node(Data):
         return 0
 
     def calc_to_safe_distance(self):
-        if self.direction == types.DIR_LEFT or self.direction == types.DIR_DOWN:
+        if self.first_direction == types.DIR_LEFT or self.first_direction == types.DIR_DOWN:
             return abs(abs(self.prior_position) + self.safe_region)
         else:
             return abs(self.prior_position - self.safe_region)
 
     def calc_to_collision_distance(self):
-        return self.get_distance(self.position, self.safe_region)
+        return get_distance(self.position, self.safe_region)
 
 ##################################### Moving function
 
@@ -411,7 +415,7 @@ class Run_Node(Data):
 
 
     def direction_with_turning(self):
-        if self.direction.count('_') < 2:
+        if self.direction.count('_') < 1:
             return False
         if self.calc_turned_direction() == types.LEFT or self.calc_turned_direction() == types.RIGHT:
             return True
@@ -424,12 +428,11 @@ class Run_Node(Data):
         if self.check_turn():
             self.has_turned = True
             return self.second_direction
+
         return self.first_direction
 
     
     def check_turn(self):
-        self.first_direction = self.direction[self.direction.index('_') + 1 : self.direction.rindex('_')]
-        self.second_direction = self.direction[self.direction.rindex('_') + 1:]
         if self.first_direction == types.DOWN:
             if self.second_direction == types.LEFT:
                 if self.current_position[1] < -self.turning_distance_far:
