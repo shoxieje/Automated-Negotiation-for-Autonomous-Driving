@@ -6,8 +6,6 @@ from std_msgs.msg import Int32, String
 from nav_msgs.msg import Odometry
 import ActionType as types
 from rocon_std_msgs.msg._StringArray import StringArray
-from Directed_Graph import *
-from openpyxl import Workbook, load_workbook
 
 from Mutual_function import *
 
@@ -15,18 +13,6 @@ class IntersectionAgent:
     def __init__(self, total_robots):
         rospy.init_node('centercontrol', anonymous=True, disable_signals=True)
         self.total_robots = total_robots
-
-        # workbook = load_workbook(filename="../catkin_ws/src/turtlebot3_simulations/turtlebot3_gazebo/data_recorded.xlsx")
-        # sheet = workbook.active
-
-        # working with workbook
-        # for i in range(self.total_robots):
-        #     sheet["A{}".format(i + 2)] = i
-
-        # sheet["B1"] = "Time"
-        # sheet["C1"] = "Avg. Speed"
-        # sheet["D1"] = "Initial Speed"
-        # sheet["E1"] = "Travel Distance"
 
         # we can have a function to calculate these value
         self.add_to_queue_distance = 3.1 + 0.5 * (self.total_robots // 10) + 0.05 * (self.total_robots % 10)
@@ -60,16 +46,11 @@ class IntersectionAgent:
 
         self.total = rospy.Publisher('total_direction', StringArray, queue_size=15)
 
-        self.vertices = []
-        self.directed_graph = Graph()
-
         self.entered_once = False
 
         self.turning_distance_far = [0.0] * self.total_robots
         self.turning_distance_close = [0.0] * self.total_robots
 
-        self.prev_platoon = None
-        self.platoon_index = 0
         self.platoon_queue = []
         self.platoon_dict = {}
         self.sorted_platoon_dict = []
@@ -94,32 +75,23 @@ class IntersectionAgent:
             # position and speed
             self.odom[i] = rospy.Subscriber('/tb3_' + str(i) + '/odom', Odometry, self.callback_odom, (i))
             self.cmd_vel = rospy.Subscriber('/tb3_' + str(i) + '/cmd_vel', Twist, self.callback_cmd, (i))
-
             self.position[i] = rospy.wait_for_message('/tb3_' + str(i) + '/direction', String)
             self.direction[i] = self.position[i].data
             self.command[i] = rospy.Publisher('tb3_' + str(i) + '_command', String, queue_size=15)
             self.received_state[i] = rospy.Subscriber('tb3_' + str(i) + '/self_command', String, self.callback_state, (i))
-            self.vertices.append(i)
-            self.first_direction[i] = self.direction[i][:self.direction[i].index('_')]
-            self.second_direction[i] = self.direction[i][self.direction[i].index('_') + 1:]
-
-
-        for i in self.vertices:
-            self.directed_graph.add_vertex(Vertex(i))
+            if self.direction[i].count('_') == 1:
+                self.first_direction[i] = self.direction[i][:self.direction[i].index('_')]
+                self.second_direction[i] = self.direction[i][self.direction[i].index('_') + 1:]
         
         # store current distance
         self.current_dist = [0.0] * self.total_robots
 
-        # check whether added to queue or not
-        self.added_to_queue = [False] * self.total_robots
-        self.added_to_graph = [False] * len(self.vertices)
-
         # active queue represent the priority order
         self.active_queue = []
         
-        output_file = open("../catkin_ws/src/turtlebot3_simulations/turtlebot3_gazebo/info.txt", "w+")
-
         self.ready.publish(types.READY)
+
+        self.added_to_queue = [False] * self.total_robots
 
         # represent the state of centralize model (init state is moving for all robots)
         self.state = [types.MOVING] * self.total_robots
@@ -130,20 +102,16 @@ class IntersectionAgent:
         while not rospy.is_shutdown():
             self.total.publish(self.direction)
 
-            # add speed to worksheet once
             if not self.added_to_speed:
                 if not 0.0 in self.speed:
                     self.added_to_speed = True
-                    # for i in range(self.total_robots):
-                    #     sheet["D{}".format(i + 2)] = self.speed[i]
-                    # workbook.save(filename="../catkin_ws/src/turtlebot3_simulations/turtlebot3_gazebo/data_recorded.xlsx")
 
 
             for i in range(self.total_robots):
                 # get the current distance to target
                 self.current_dist[i] = self.pos_x[i] if self.verticle_direction(i) else self.pos_y[i]
 
-                print("Robot {}: {} with {}".format(i, abs(self.current_dist[i]), self.direction[i]))
+                print("Robot {}: {} with {}".format(i, self.current_dist[i], self.direction[i]))
 
                 # if a robot is just outside collision region -> add to queue
                 if abs(self.current_dist[i]) <= self.add_to_queue_distance and not self.added_to_queue[i] and self.current_dist[i] != 0:
@@ -172,7 +140,7 @@ class IntersectionAgent:
                             self.min_pos_opp = abs(self.current_dist[i])
                             self.first_opp_vehicle = i
 
-                    if self.first_opp_vehicle is not None:
+                    if self.first_opp_vehicle is not None and self.check_turning_far(self.active_queue[0]) and self.check_turning_far(self.first_opp_vehicle):
                         self.t1 = self.calc_to_safe_distance(self.active_queue[0]) / self.speed[self.active_queue[0]]
                         self.t2 = self.calc_to_collision_distance(self.first_opp_vehicle) / self.speed[self.first_opp_vehicle]
 
@@ -184,18 +152,6 @@ class IntersectionAgent:
                     
                     self.first_opp_vehicle = None
 
-                    if self.added_to_graph[self.active_queue[0]] == False:
-                        self.added_to_graph[self.active_queue[0]] = True
-                        for i in self.vertices:
-                            if i != self.active_queue[0]:
-                                self.directed_graph.add_edges(self.vertices[self.vertices.index(self.active_queue[0])], i)
-
-                        self.vertices.pop(self.vertices.index(self.active_queue[0]))
-
-                        output_file.write(self.directed_graph.print_graph() + '\n')
-
-                        if len(self.vertices) == 0:
-                            output_file.close()
 
                 if self.active_queue[1:]:
                     self.platoon_dict = {}
@@ -231,23 +187,19 @@ class IntersectionAgent:
                     
                     self.saved_sorted_platoon_dict = self.sorted_platoon_dict
                 
-                # check if the first vehicle from the queue has passed the threshold yet
-                if len(self.active_queue) <= 2:
-                    if (self.direction[self.active_queue[0]].count('_') == 1 and self.has_turned[self.active_queue[0]]) or self.direction[self.active_queue[0]].count('_') < 1:
-                        self.check_passed(self.active_queue[0])
-                else:
-                    for i in range(2):
-                        if (self.direction[i].count('_') == 1 and self.has_turned[i]) or self.direction[i].count('_') < 1:
-                            self.check_passed(self.active_queue[i])
+                for i in range((self.state.count(types.ENTER_INTERSECTION)) + (1 if self.state.count(types.PLATOONING) >= 1 else 0)):
+                    if (self.direction[self.active_queue[i]].count('_') == 1 and self.has_turned[self.active_queue[i]]) or self.direction[self.active_queue[i]].count('_') < 1:
+                        self.check_passed(self.active_queue[i])
+
 
             # public commands to robots
             for i in range(self.total_robots):
                 self.command[i].publish(self.state[i])
+            
 
             print(self.state)
 
             if self.all_same(self.state):
-                # workbook.save(filename="data_recorded.xlsx")
                 rospy.signal_shutdown('No Vehicles Available in the Intersection!')
                 rospy.on_shutdown(self.myhook)
             else:
@@ -257,7 +209,7 @@ class IntersectionAgent:
         return all(a == x[0] and a == types.PASS_INTERSECTION for a in x)
 
     def check_passed(self, first):
-        if self.direction[first] == types.DIR_LEFT or self.direction[first] == types.DIR_DOWN or self.check_second_direction(first):
+        if self.direction[first] == types.DIR_LEFT or self.direction[first] == types.DIR_DOWN or (self.check_second_direction(first) and self.has_turned[first]):
             if self.current_dist[first] <= -self.safe_region:
                 self.state[first] = types.PASS_INTERSECTION
                 self.active_queue.pop(self.active_queue.index(first))
@@ -289,8 +241,13 @@ class IntersectionAgent:
     def calc_to_safe_distance(self, x):
         if self.direction[x] == types.DIR_LEFT or self.direction[x] == types.DIR_DOWN:
             return abs(abs(self.current_dist[x]) + self.safe_region)
-        else:
+        elif self.direction[x] == types.DIR_RIGHT or self.direction[x] == types.DIR_UP:
             return abs(self.current_dist[x] - self.safe_region)
+        elif self.check_turning_far(x):
+            return pow(abs(self.current_dist[x]), 2) + 0.5
+        else:
+            return pow(abs(self.current_dist[x]), 2) - 0.5
+
 
     def calc_to_collision_distance(self, x):
         return get_distance(self.current_dist[x], self.safe_region)
@@ -299,7 +256,6 @@ class IntersectionAgent:
         if self.direction[id] == types.DIR_LEFT or self.direction[id] == types.DIR_RIGHT or self.direction_with_turning(id):
             return True
         return False
-
 
     def direction_with_turning(self, id):
         if self.direction[id].count('_') < 1:
@@ -353,7 +309,6 @@ class IntersectionAgent:
                     return True
         return False
 
-
     def check_turning_far(self, id):
         if self.first_direction[id] == types.RIGHT:
             return self.second_direction[id] == types.DOWN
@@ -363,6 +318,7 @@ class IntersectionAgent:
             return self.second_direction[id] == types.LEFT
         else:
             return self.second_direction[id] == types.RIGHT
+
 
 
     # def get_distance(self, a, b):

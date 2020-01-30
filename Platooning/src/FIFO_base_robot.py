@@ -74,8 +74,9 @@ class Run_Node(Data):
         self.direction = self.calc_direction()
 
         if self.direction.count('_') == 1:
-            self.first_direction = self.direction[:self.direction.index('_')]
-            self.second_direction = self.direction[self.direction.index('_') + 1:]
+            self.first_direction, self.second_direction = self.calc_separate_direction(self.direction)
+        else:
+            self.first_direction, self.second_direction = self.direction, self.direction
 
         while self.ready == types.NOT_READY:
             self.location.publish(self.direction)
@@ -107,12 +108,19 @@ class Run_Node(Data):
 
         self.add_init_speed = False
 
+        self.received_prior_direction_once = False
+
         self.other_location = []
+        self.prior_direction = ''
+        self.prior_first_direction = ''
+        self.prior_second_direction = ''
 
         if self.direction.count('_') == 1:
             self.turning_distance_far = 0.1 - (self.speed - 0.1) * 1.5
             self.turning_distance_close = 0.4 + (self.speed - 0.1) * 1.5
             self.has_turned = False
+        else:
+            self.has_turned = True
 
 
         for i in self.same_direction:
@@ -141,6 +149,13 @@ class Run_Node(Data):
             print('Robot {} is infront of: {}'.format(self.in_front, self.name))
             prior_vehicle_odom = rospy.Subscriber('/tb3_' + str(self.in_front) + '_command', String, self.callback_prior_command)
             prior_vehicle_speed = rospy.Subscriber('tb3_' + str(self.in_front) + '/cmd_vel', Twist, self.callback_prior_speed)
+            self.prior_direction = self.all_direction[self.in_front]
+
+            if self.prior_direction.count('_') == 1:
+                self.prior_first_direction, self.prior_second_direction = self.calc_separate_direction(self.prior_direction)
+            else:
+                self.prior_first_direction, self.prior_second_direction = self.prior_direction, self.prior_direction
+
             self.catch_up = False
 
         # unsubscribe to unnecessary topic
@@ -188,12 +203,18 @@ class Run_Node(Data):
                      # stop immendiately
                     self.publish_signal(types.STOP)
 
-            elif (self.prior_command == types.ENTER_INTERSECTION or self.prior_command == types.PLATOONING) and self.entered_once:
+            elif (self.prior_command == types.ENTER_INTERSECTION or self.prior_command == types.PLATOONING) and self.entered_once:                    
+
                 self.entered_once = False
                 # start moving when the other vehicles enter the area
+                self.test1 = self.calc_to_safe_distance()
+                self.test2 = self.calc_to_collision_distance()
 
-                self.t1 = self.calc_to_safe_distance() / self.saved_prior_speed
-                self.t2 = self.calc_to_collision_distance() / self.speed
+                self.t1 = self.test1 / self.saved_prior_speed
+                self.t2 = self.test2 / self.speed
+
+                if self.name >= 4:
+                    print('Robot {} with t1 {} and t2 {} with safe {} and coli {}'.format(self.name, self.t1, self.t2, self.test1, self.test2))
 
                 if self.t1 >= self.t2:
                     self.publish_signal(types.PLATOONING)
@@ -211,22 +232,11 @@ class Run_Node(Data):
 
             # * Shutdown the node when it reaches the destination
             if self.reached_destination():
-                # workbook = load_workbook(filename="../catkin_ws/src/turtlebot3_simulations/turtlebot3_gazebo/data_recorded.xlsx")
-                # sheet = workbook.active
-
                 if self.verticle_direction():
                     self.total_dist = abs(self.initial_position[0]) + abs(self.destination[0])
                 else:
                     self.total_dist = abs(self.initial_position[1]) + abs(self.destination[1])
                 
-                # # record time, speed and distance
-                # sheet["B{}".format(int(self.name) + 2)] = rospy.get_time()
-                # sheet["E{}".format(int(self.name) + 2)] = self.total_dist
-                # sheet["C{}".format(int(self.name) + 2)] = round(self.total_dist / rospy.get_time(), 3)
-                
-                # workbook.save(filename="../catkin_ws/src/turtlebot3_simulations/turtlebot3_gazebo/data_recorded.xlsx")
-
-                # self.rotate()
                 self.publish_speed_signal(0.0)
                 output_file = open("../catkin_ws/src/turtlebot3_simulations/turtlebot3_gazebo/robots_info.txt", "a+")
                 
@@ -292,7 +302,7 @@ class Run_Node(Data):
                     if self.destination[1] < 0:
                         return types.DIR_LEFT_DOWN
                     else:
-                        return types.DIR_RIGHT_DOWN
+                        return types.DIR_LEFT_UP
 
                 else:
                     if self.destination[1] < 0:
@@ -302,13 +312,6 @@ class Run_Node(Data):
 
 
 ####################### calculate the distance
-    # def check_abs(self, x, y):
-    #     if abs(x) > abs(y):
-    #         return True
-    #     return False
-
-    # def get_distance(self, a, b):
-    #     return abs(abs(a) - abs(b))
 
     def find_closest_distance(self, l, t):
         closest_values = [x for x in l if abs(x) < abs(t)]
@@ -316,14 +319,33 @@ class Run_Node(Data):
             return max(closest_values) if t > 0 else min(closest_values)
         return 0
 
-    def calc_to_safe_distance(self):
-        if self.first_direction == types.DIR_LEFT or self.first_direction == types.DIR_DOWN:
-            return abs(abs(self.prior_position) + self.safe_region)
-        else:
-            return abs(self.prior_position - self.safe_region)
-
     def calc_to_collision_distance(self):
         return get_distance(self.position, self.safe_region)
+
+    def calc_to_safe_distance(self):
+        if self.prior_direction == types.DIR_LEFT or self.prior_direction == types.DIR_DOWN:
+            return abs(abs(self.prior_position) + self.safe_region)
+        elif self.prior_direction == types.DIR_RIGHT or self.prior_direction == types.DIR_UP:
+            return abs(self.prior_position - self.safe_region)
+        elif self.check_turning_far():
+            return pow(abs(self.prior_position), 2) + 0.5  #? c^2 = a^2 + b^2 (c = hypotenuse of the triangle, a = current distance - 0.25, b = 0.25^2)
+        else:
+            return pow(abs(self.prior_position), 2) - 0.5
+
+
+    def check_turning_far(self):
+        if self.prior_first_direction == types.RIGHT:
+            return self.prior_second_direction == types.DOWN
+        elif self.prior_first_direction == types.LEFT:
+            return self.prior_second_direction == types.UP
+        elif self.prior_first_direction == types.DOWN:
+            return self.prior_second_direction == types.LEFT
+        else:
+            return self.prior_second_direction == types.RIGHT
+
+
+    def calc_separate_direction(self, full_direction):
+        return full_direction[:full_direction.index('_')], full_direction[full_direction.index('_') + 1:]
 
 ##################################### Moving function
 
@@ -489,5 +511,5 @@ class Run_Node(Data):
 
     def callback_prior_speed(self, msg):
         self.prior_speed = msg.linear.x
-        if self.prior_speed != 0.0:
+        if self.prior_speed != 0.0 and self.saved_prior_speed != self.prior_speed:
             self.saved_prior_speed = self.prior_speed
