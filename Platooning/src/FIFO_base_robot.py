@@ -11,8 +11,6 @@ import ActionType as types
 from FIFO_base_info import Data
 from tf.transformations import euler_from_quaternion
 
-from Mutual_function import *
-
 from rocon_std_msgs.msg._StringArray import StringArray
 from openpyxl import Workbook, load_workbook
 
@@ -136,12 +134,12 @@ class Run_Node(Data):
         # method to get the front vehicle id
         if self.verticle_direction():
             self.closest_x = self.find_closest_distance(self.same_direction_location_x, self.initial_position[0])
-            if self.closest_x != 0 and get_distance(min(self.same_direction_location_y), self.initial_position[1]) <= 0.2:
+            if self.closest_x != 0 and self.get_distance(min(self.same_direction_location_y), self.initial_position[1]) <= 0.2:
                 self.in_front = self.same_direction[self.same_direction_location_x.index(self.closest_x)]
 
         else:
             self.closest_y = self.find_closest_distance(self.same_direction_location_y, self.initial_position[1])
-            if self.closest_y != 0 and get_distance(min(self.same_direction_location_x), self.initial_position[0]) <= 0.2:
+            if self.closest_y != 0 and self.get_distance(min(self.same_direction_location_x), self.initial_position[0]) <= 0.2:
                 self.in_front = self.same_direction[self.same_direction_location_y.index(self.closest_y)]
 
         # subscribe to the speed of the vehicle in front
@@ -185,7 +183,7 @@ class Run_Node(Data):
                 else:
                     self.prior_position = self.same_direction_location_y[self.same_direction.index(self.in_front)]
 
-                if get_distance(self.position, self.prior_position) <= (self.safe_distance + 0.1):
+                if self.get_distance(self.position, self.prior_position) <= (self.safe_distance + 0.1):
                     # make sure the prior speed doesn't change
                     if self.speed > self.prior_speed and self.prior_speed != 0.0:
                         if not self.add_init_speed:
@@ -199,7 +197,7 @@ class Run_Node(Data):
             # handle multiple signal coming from the front vehicle
             if self.prior_command == types.STOP:
                 self.in_front_moved = True
-                if get_distance(self.prior_position, self.position) <= self.safe_distance:
+                if self.get_distance(self.prior_position, self.position) <= self.safe_distance:
                      # stop immendiately
                     self.publish_signal(types.STOP)
 
@@ -207,14 +205,9 @@ class Run_Node(Data):
 
                 self.entered_once = False
                 # start moving when the other vehicles enter the area
-                self.test1 = self.calc_to_safe_distance()
-                self.test2 = self.calc_to_collision_distance()
 
-                self.t1 = self.test1 / self.saved_prior_speed
-                self.t2 = self.test2 / self.speed
-
-                if self.name >= 4:
-                    print('Robot {} with t1 {} and t2 {} with safe {} and coli {}'.format(self.name, self.t1, self.t2, self.test1, self.test2))
+                self.t1 = self.calc_to_safe_distance() / self.speed
+                self.t2 = self.calc_to_collision_distance() / self.speed
 
                 if self.t1 >= self.t2:
                     self.publish_signal(types.PLATOONING)
@@ -312,6 +305,8 @@ class Run_Node(Data):
 
 
 ####################### calculate the distance
+    def get_distance(self, a, b):
+        return abs(abs(a) - abs(b))
 
     def find_closest_distance(self, l, t):
         closest_values = [x for x in l if abs(x) < abs(t)]
@@ -320,7 +315,7 @@ class Run_Node(Data):
         return 0
 
     def calc_to_collision_distance(self):
-        return get_distance(self.position, self.safe_region)
+        return self.get_distance(self.position, self.safe_region)
 
     def calc_to_safe_distance(self):
         if self.prior_direction == types.DIR_LEFT or self.prior_direction == types.DIR_DOWN:

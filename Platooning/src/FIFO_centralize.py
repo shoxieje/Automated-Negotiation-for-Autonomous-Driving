@@ -7,8 +7,6 @@ from nav_msgs.msg import Odometry
 import ActionType as types
 from rocon_std_msgs.msg._StringArray import StringArray
 
-from Mutual_function import *
-
 class IntersectionAgent:
     def __init__(self, total_robots):
         rospy.init_node('centercontrol', anonymous=True, disable_signals=True)
@@ -187,9 +185,13 @@ class IntersectionAgent:
                     
                     self.saved_sorted_platoon_dict = self.sorted_platoon_dict
                 
-                for i in range((self.state.count(types.ENTER_INTERSECTION)) + (1 if self.state.count(types.PLATOONING) >= 1 else 0)):
-                    if (self.direction[self.active_queue[i]].count('_') == 1 and self.has_turned[self.active_queue[i]]) or self.direction[self.active_queue[i]].count('_') < 1:
-                        self.check_passed(self.active_queue[i])
+                if len(self.active_queue) <= 2:
+                    if (self.direction[self.active_queue[0]].count('_') == 1 and self.has_turned[self.active_queue[0]]) or self.direction[self.active_queue[0]].count('_') < 1:
+                        self.check_passed(self.active_queue[0])
+                else:
+                    for i in range((self.state.count(types.ENTER_INTERSECTION)) + (1 if self.state.count(types.PLATOONING) >= 1 else 0)):
+                        if (self.direction[self.active_queue[i]].count('_') == 1 and self.has_turned[self.active_queue[i]]) or self.direction[self.active_queue[i]].count('_') < 1:
+                            self.check_passed(self.active_queue[i])
 
 
             # public commands to robots
@@ -250,7 +252,7 @@ class IntersectionAgent:
 
 
     def calc_to_collision_distance(self, x):
-        return get_distance(self.current_dist[x], self.safe_region)
+        return self.get_distance(self.current_dist[x], self.safe_region)
 
     def verticle_direction(self, id):
         if self.direction[id] == types.DIR_LEFT or self.direction[id] == types.DIR_RIGHT or self.direction_with_turning(id):
@@ -320,9 +322,8 @@ class IntersectionAgent:
             return self.second_direction[id] == types.RIGHT
 
 
-
-    # def get_distance(self, a, b):
-    #     return abs(abs(a) - abs(b))
+    def get_distance(self, a, b):
+        return abs(abs(a) - abs(b))
 
 
     def callback_odom(self, msg, args):
