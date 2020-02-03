@@ -30,17 +30,12 @@ class Run_Node(Data):
         self.all_direction = ['']
 
         self.entered_once = True
-        self.catch_up = None
         self.prior_speed = 0.0
-
-
-        self.saved_prior_speed = 0.0
 
         # speed publisher
         self.cmd_vel = rospy.Publisher('tb3_' + self.name +'/cmd_vel', Twist, queue_size=5)
         odom = rospy.Subscriber('tb3_' + self.name +'/odom', Odometry, self.callback_odom)
-
-        self.sys_ready = rospy.Subscriber('ready', String, self.callback_system)
+        sys_ready = rospy.Subscriber('ready', String, self.callback_system)
 
         self.same_direction = []
 
@@ -49,7 +44,7 @@ class Run_Node(Data):
         # assign speed
         self.tb3_move_cmd = Twist()
         self.max_speed = 0.3
-        self.speed = round(random.uniform(0.3, 0.5), 2)
+        self.speed = round(random.uniform(0.1, 0.5), 2)
 
         if self.speed > self.max_speed:
             self.speed = self.max_speed
@@ -59,9 +54,9 @@ class Run_Node(Data):
 
         self.check_first_direction_once = False
 
-        self.changed_speed_arr = []
-
         self.first_direction_end_position = [0.0] * 2
+
+        self.has_passed_intersection = False
 
         # self.speed = 0.15
 
@@ -71,16 +66,13 @@ class Run_Node(Data):
         self.location = rospy.Publisher('tb3_' + self.name + '/direction', String, queue_size=5)
         self.direction = self.calc_direction()
 
-        if self.direction.count('_') == 1:
-            self.first_direction, self.second_direction = self.calc_separate_direction(self.direction)
-        else:
-            self.first_direction, self.second_direction = self.direction, self.direction
+        self.first_direction, self.second_direction = self.calc_separate_direction(self.direction)
 
         while self.ready == types.NOT_READY:
             self.location.publish(self.direction)
 
         # unsubscribe to system signal
-        self.sys_ready.unregister()
+        sys_ready.unregister()
 
         # get all the direction from other vehicles
         self.total_direction = rospy.wait_for_message('total_direction', StringArray)
@@ -89,82 +81,48 @@ class Run_Node(Data):
         # publish our own command
         self.self_command = rospy.Publisher('tb3_' + self.name + '/self_command', String, queue_size=5)
 
-        # print(self.all_direction)
-
-        for i in range(len(self.all_direction)):
-            if self.all_direction[i][:len(self.first_direction)] == self.first_direction[:len(self.all_direction[i])] and str(i) != self.name:
-                self.same_direction.append(i)
-
-        self.same_direction_location_x = [0.0] * len(self.same_direction)
-        self.same_direction_location_y = [0.0] * len(self.same_direction)
-
-        self.road_distance = 5.0 + len(self.same_direction) * 0.5
-
         # id of the vehicles in front
-        self.in_front = None
         self.prior_command = ''
-
-        self.add_init_speed = False
-
-        self.received_prior_direction_once = False
 
         self.other_location = []
         self.prior_direction = ''
         self.prior_first_direction = ''
         self.prior_second_direction = ''
-
+        
+        self.turning_distance_far = self.calc_turning_distance_far()
+        self.turning_distance_close = self.calc_turning_distance_close()
+    
         if self.direction.count('_') == 1:
-            self.turning_distance_far = 0.1 - (self.speed - 0.1) * 1.5
-            self.turning_distance_close = 0.4 + (self.speed - 0.1) * 1.5
             self.has_turned = False
         else:
             self.has_turned = True
 
+        # calculate same directions (based on the first direction)
+        self.in_front = None
+        self.in_front = self.calc_infront_vehicle()
 
-        for i in self.same_direction:
-            self.other_location.append(rospy.Subscriber('/tb3_' + str(i) + '/odom', Odometry, self.callback_other_odom, (self.same_direction.index(i))))
-            
-        # wait for the signal
-        while 0.0 in self.same_direction_location_x and 0.0 in self.same_direction_location_y:
-            pass
+        print('Robot {} in front {}'.format(self.name, self.in_front))
 
-        print("Robot {}: friend {} -> {}, {}".format(self.name, self.same_direction, self.same_direction_location_x, self.same_direction_location_y))
+        self.unsubscribe_same_direction()
 
+        self.road_distance = 5.0 + len(self.same_direction) * 0.5
 
         # method to get the front vehicle id
-        if self.verticle_direction():
-            self.closest_x = self.find_closest_distance(self.same_direction_location_x, self.initial_position[0])
-            if self.closest_x != 0 and self.get_distance(min(self.same_direction_location_y), self.initial_position[1]) <= 0.2:
-                self.in_front = self.same_direction[self.same_direction_location_x.index(self.closest_x)]
-
-        else:
-            self.closest_y = self.find_closest_distance(self.same_direction_location_y, self.initial_position[1])
-            if self.closest_y != 0 and self.get_distance(min(self.same_direction_location_x), self.initial_position[0]) <= 0.2:
-                self.in_front = self.same_direction[self.same_direction_location_y.index(self.closest_y)]
 
         # subscribe to the speed of the vehicle in front
         if self.in_front is not None:
-            print('Robot {} is infront of: {}'.format(self.in_front, self.name))
-            prior_vehicle_odom = rospy.Subscriber('/tb3_' + str(self.in_front) + '_command', String, self.callback_prior_command)
-            prior_vehicle_speed = rospy.Subscriber('tb3_' + str(self.in_front) + '/cmd_vel', Twist, self.callback_prior_speed)
+            self.prior_vehicle_command = rospy.Subscriber('/tb3_' + str(self.in_front) + '_command', String, self.callback_prior_command)
+            self.prior_vehicle_speed = rospy.Subscriber('tb3_' + str(self.in_front) + '/cmd_vel', Twist, self.callback_prior_speed)
             self.prior_direction = self.all_direction[self.in_front]
 
-            if self.prior_direction.count('_') == 1:
-                self.prior_first_direction, self.prior_second_direction = self.calc_separate_direction(self.prior_direction)
-            else:
-                self.prior_first_direction, self.prior_second_direction = self.prior_direction, self.prior_direction
-
-            self.catch_up = False
-
-        # unsubscribe to unnecessary topic
-        for i in self.same_direction:
-            if i != self.in_front:
-                self.other_location[self.same_direction.index(i)].unregister()
-
+            self.prior_first_direction, self.prior_second_direction = self.calc_separate_direction(self.prior_direction)
+            
         self.t1 = 0.0
         self.t2 = 0.0
 
         rospy.sleep(1)
+
+        self.passed_intersection_once = False
 
         signal_data = rospy.Subscriber('tb3_'+ self.name +'_command', String, self.callback_signal)
 
@@ -176,7 +134,7 @@ class Run_Node(Data):
             self.position = self.current_position[0] if self.verticle_direction() else self.current_position[1]
 
             # adjust the speed when it's get too close to the front vehicle
-            if self.in_front is not None and self.prior_command == types.MOVING:
+            if self.in_front is not None and (self.prior_command == types.MOVING or self.prior_command == types.PASS_INTERSECTION):
                 # get the front vehicle position
                 if self.verticle_direction():
                     self.prior_position = self.same_direction_location_x[self.same_direction.index(self.in_front)]
@@ -186,13 +144,9 @@ class Run_Node(Data):
                 if self.get_distance(self.position, self.prior_position) <= (self.safe_distance + 0.1):
                     # make sure the prior speed doesn't change
                     if self.speed > self.prior_speed and self.prior_speed != 0.0:
-                        if not self.add_init_speed:
-                            self.add_init_speed  = True
-                            self.changed_speed_arr.append([self.speed, 0.0])
-                            
                         self.speed = self.prior_speed
-                        self.changed_speed_arr.append([self.speed, rospy.get_time()])
-                        # empty array
+                        self.turning_distance_far = self.calc_turning_distance_far()
+                        self.turning_distance_close = self.calc_turning_distance_close()
 
             # handle multiple signal coming from the front vehicle
             if self.prior_command == types.STOP:
@@ -201,7 +155,7 @@ class Run_Node(Data):
                      # stop immendiately
                     self.publish_signal(types.STOP)
 
-            elif (self.prior_command == types.ENTER_INTERSECTION or self.prior_command == types.PLATOONING) and self.entered_once:                    
+            elif (self.prior_command == types.ENTER_INTERSECTION or self.prior_command == types.PLATOONING) and self.entered_once:
 
                 self.entered_once = False
                 # start moving when the other vehicles enter the area
@@ -219,33 +173,18 @@ class Run_Node(Data):
                 self.in_front_moved = False
                 self.publish_signal(types.MOVING)
 
+            elif self.prior_command == types.REACH_DESTINATION and self.signal == types.PASS_INTERSECTION:
+                if self.get_distance(self.position, self.prior_position) <= (self.safe_distance + 0.1):
+                    self.publish_signal(types.REACH_DESTINATION)
+
 
             # * choose_status is working
             self.choose_status(self.signal)
 
             # * Shutdown the node when it reaches the destination
             if self.reached_destination():
-                if self.verticle_direction():
-                    self.total_dist = abs(self.initial_position[0]) + abs(self.destination[0])
-                else:
-                    self.total_dist = abs(self.initial_position[1]) + abs(self.destination[1])
-                
                 self.publish_speed_signal(0.0)
-                output_file = open("../catkin_ws/src/turtlebot3_simulations/turtlebot3_gazebo/robots_info.txt", "a+")
-                
-                txt_output = ""
-
-                for i in range(len(self.changed_speed_arr)):
-                    txt_output += "the speed {} at {}".format(self.changed_speed_arr[i][0], self.changed_speed_arr[i][1])
-                    if i != len(self.changed_speed_arr) - 1:
-                        txt_output += ", "
-                
-                if not self.changed_speed_arr:
-                    txt_output += "the speed of {}".format(self.speed)
-
-                
-                output_file.write('Robot {} with {}, the total travel distance {} and total time {}\n-----------------------------\n'.format(self.name, txt_output, self.total_dist, rospy.get_time()))
-                output_file.close()
+                self.publish_signal(types.REACH_DESTINATION)
                 rospy.signal_shutdown('Passed Intersection!')
                 rospy.on_shutdown(self.myhook)
 
@@ -256,8 +195,8 @@ class Run_Node(Data):
             types.ENTER_INTERSECTION: self.Enter_intersection,
             types.PASS_INTERSECTION: self.Pass_intersection,
             types.PLATOONING: self.Platooning,
-            types.MOVING_NEXT: self.Enter_intersection,
             types.STOP: self.Stop,
+            types.REACH_DESTINATION: self.Reach_destination
         }.get(x, self.Stop)()
 
 
@@ -308,11 +247,26 @@ class Run_Node(Data):
     def get_distance(self, a, b):
         return abs(abs(a) - abs(b))
 
-    def find_closest_distance(self, l, t):
-        closest_values = [x for x in l if abs(x) < abs(t)]
+    def find_closest_distance(self, l):
+        if not self.has_passed_intersection:
+            t = self.initial_position[0] if self.verticle_direction() else self.initial_position[1]
+            closest_values = [x for num, x in enumerate(l) if abs(x) < abs(t) and (not self.has_turned or self.other_crossed_intersection[num])]
+        else:
+            t = self.position
+            closest_values = [x for num, x in enumerate(l) if abs(x) > abs(t) and (not self.has_turned or self.other_crossed_intersection[num])]
+
         if closest_values:
-            return max(closest_values) if t > 0 else min(closest_values)
+            if not self.has_passed_intersection:
+                return max(closest_values) if t > 0 else min(closest_values)
+            else:
+                return min(closest_values) if t > 0 else max(closest_values)
         return 0
+
+    def calc_turning_distance_far(self):
+        return (0.1 - (self.speed - 0.1) * 1.5)
+
+    def calc_turning_distance_close(self):
+        return (0.4 + (self.speed - 0.1) * 1.5)
 
     def calc_to_collision_distance(self):
         return self.get_distance(self.position, self.safe_region)
@@ -329,18 +283,20 @@ class Run_Node(Data):
 
 
     def check_turning_far(self):
-        if self.prior_first_direction == types.RIGHT:
-            return self.prior_second_direction == types.DOWN
-        elif self.prior_first_direction == types.LEFT:
-            return self.prior_second_direction == types.UP
-        elif self.prior_first_direction == types.DOWN:
-            return self.prior_second_direction == types.LEFT
+        if self.prior_first_direction == types.DIR_RIGHT:
+            return self.prior_second_direction == types.DIR_DOWN
+        elif self.prior_first_direction == types.DIR_LEFT:
+            return self.prior_second_direction == types.DIR_UP
+        elif self.prior_first_direction == types.DIR_DOWN:
+            return self.prior_second_direction == types.DIR_LEFT
         else:
-            return self.prior_second_direction == types.RIGHT
+            return self.prior_second_direction == types.DIR_RIGHT
 
 
     def calc_separate_direction(self, full_direction):
-        return full_direction[:full_direction.index('_')], full_direction[full_direction.index('_') + 1:]
+        if full_direction.count('_') == 1:
+            return full_direction[:full_direction.index('_')], full_direction[full_direction.index('_') + 1:]
+        return full_direction, full_direction
 
 ##################################### Moving function
 
@@ -371,10 +327,35 @@ class Run_Node(Data):
         # assign random speed (could add acceleration speed later)
         self.publish_speed_signal(self.speed)
 
+        if not self.has_passed_intersection:
+            self.has_passed_intersection = True
+        
+        if self.has_passed_intersection and not self.passed_intersection_once:
+            self.passed_intersection_once = True
+
+            if self.in_front is not None:
+                self.prior_vehicle_command.unregister()
+                self.prior_vehicle_speed.unregister()
+
+            self.in_front = self.calc_infront_vehicle()
+
+            print('-' * 50)
+            print('Robot {} in front {}'.format(self.name, self.in_front))
+            
+            if self.in_front is not None:
+                self.prior_vehicle_command_2 = rospy.Subscriber('/tb3_' + str(self.in_front) + '_command', String, self.callback_prior_command)
+                self.prior_vehicle_speed_2 = rospy.Subscriber('tb3_' + str(self.in_front) + '/cmd_vel', Twist, self.callback_prior_speed)
+
+            # reset prior command
+            self.prior_command = ''
+ 
 
     def Platooning(self):
         # assign random speed (could add acceleration speed later)
         self.publish_speed_signal(self.speed)
+
+    def Reach_destination(self):
+        self.publish_speed_signal(0.0)
 
 
     def rotate(self):
@@ -390,6 +371,7 @@ class Run_Node(Data):
                     self.first_direction_end_position = [self.initial_position[0], self.initial_position[1] + self.road_distance]
                 else:
                     self.first_direction_end_position = [self.initial_position[0], self.initial_position[1] - self.road_distance]
+
 
         if not self.has_turned:
             path_angle = atan2(self.first_direction_end_position[1] - self.current_position[1], self.first_direction_end_position[0] - self.current_position[0])
@@ -418,6 +400,9 @@ class Run_Node(Data):
 
 
     def reached_destination(self):
+        if self.signal == types.REACH_DESTINATION:
+            return True
+
         if self.signal == types.PASS_INTERSECTION:
             self.end_destination = self.destination[0] if self.verticle_direction() else self.destination[1]
 
@@ -430,11 +415,10 @@ class Run_Node(Data):
             return True
         return False
 
-
     def direction_with_turning(self):
         if self.direction.count('_') < 1:
             return False
-        if self.calc_turned_direction() == types.LEFT or self.calc_turned_direction() == types.RIGHT:
+        if self.calc_turned_direction() == types.DIR_LEFT or self.calc_turned_direction() == types.DIR_RIGHT:
             return True
         return False
 
@@ -442,48 +426,109 @@ class Run_Node(Data):
         if self.has_turned:
             return self.second_direction
 
-        if self.check_turn():
+        if self.check_turn(self.first_direction, self.second_direction, self.current_position):
             self.has_turned = True
             return self.second_direction
 
         return self.first_direction
 
     
-    def check_turn(self):
-        if self.first_direction == types.DOWN:
-            if self.second_direction == types.LEFT:
-                if self.current_position[1] < -self.turning_distance_far:
-                    return True
-            elif self.second_direction == types.RIGHT:
-                if self.current_position[1] < self.turning_distance_close:
-                    return True
+    def check_turn(self, first_dir, second_dir, current_pos):
+        if first_dir == types.DIR_DOWN:
+            if second_dir == types.DIR_LEFT or second_dir == types.DIR_DOWN:
+                return current_pos[1] < -self.turning_distance_far
+            elif second_dir == types.DIR_RIGHT:
+                return current_pos[1] < self.turning_distance_close
 
-        elif self.first_direction == types.UP:
-            if self.second_direction == types.RIGHT:
-                if self.current_position[1] > self.turning_distance_far:
-                    return True
-            elif self.second_direction == types.LEFT:
-                if self.current_position[1] > -self.turning_distance_close:
-                    return True
+        elif first_dir == types.DIR_UP:
+            if second_dir == types.DIR_RIGHT or second_dir == types.DIR_UP:
+                return current_pos[1] > self.turning_distance_far
+            elif second_dir == types.DIR_LEFT:
+                return current_pos[1] > -self.turning_distance_close
 
-        elif self.first_direction == types.LEFT:
-            if self.second_direction == types.UP:
-                if self.current_position[0] < -self.turning_distance_far:
-                    return True
-            elif self.second_direction == types.DOWN:
-                if self.current_position[0] < self.turning_distance_close:
-                    return True
+        elif first_dir == types.DIR_LEFT:
+            if second_dir == types.DIR_UP or second_dir == types.DIR_LEFT:
+                return current_pos[0] < -self.turning_distance_far
+            elif second_dir == types.DIR_DOWN:
+                return current_pos[0] < self.turning_distance_close
 
         else:
-            if self.second_direction == types.DOWN:
-                if self.current_position[0] > self.turning_distance_far:
-                    return True
-            elif self.second_direction == types.UP:
-                if self.current_position[0] > -self.turning_distance_close:
-                    return True
-        return False
+            if second_dir == types.DIR_DOWN or second_dir == types.DIR_RIGHT:
+                return current_pos[0] > self.turning_distance_far
+            elif second_dir == types.DIR_UP:
+                return current_pos[0] > -self.turning_distance_close
 
 
+    def calc_infront_vehicle(self):
+        if self.in_front is not None:
+            self.other_location[self.same_direction.index(self.in_front)].unregister()
+
+        self.same_direction = []
+        self.other_location = []
+
+        for i in range(len(self.all_direction)):
+            if not self.has_passed_intersection:
+                if self.all_direction[i][:len(self.first_direction)] == self.first_direction[:len(self.all_direction[i])] and str(i) != self.name:
+                    self.same_direction.append(i)
+            else:
+                if self.all_direction[i].count('_') == 1:
+                    if self.all_direction[i][self.all_direction[i].index('_') + 1:] == self.second_direction and str(i) != self.name:
+                        self.same_direction.append(i)
+                else:
+                    if self.all_direction[i] == self.second_direction and str(i) != self.name:
+                        self.same_direction.append(i)
+        
+        self.other_crossed_intersection = [False] * len(self.same_direction)
+        self.same_direction_location_x = [0.0] * len(self.same_direction)
+        self.same_direction_location_y = [0.0] * len(self.same_direction)
+            
+
+        for i in self.same_direction:
+            self.other_location.append(rospy.Subscriber('/tb3_' + str(i) + '/odom', Odometry, self.callback_other_odom, (self.same_direction.index(i))))
+            
+        # wait for the signal
+        while 0.0 in self.same_direction_location_x and 0.0 in self.same_direction_location_y:
+            pass
+
+        if self.has_passed_intersection:
+            for i, x in enumerate(self.same_direction):
+                temp_dir_1, temp_dir_2 = self.calc_separate_direction(self.all_direction[x])
+                self.other_crossed_intersection[i] = self.check_turn(temp_dir_1, temp_dir_2, [self.same_direction_location_x[i], self.same_direction_location_y[i]])
+
+
+        if self.verticle_direction():
+            self.closest_x = self.find_closest_distance(self.same_direction_location_x)
+            if self.closest_x != 0:
+                return self.same_direction[self.same_direction_location_x.index(self.closest_x)]
+
+        else:
+            self.closest_y = self.find_closest_distance(self.same_direction_location_y)
+            if self.closest_y != 0:
+                return self.same_direction[self.same_direction_location_y.index(self.closest_y)]
+
+        return None
+
+    def unsubscribe_same_direction(self):
+        # unsubscribe to unnecessary topic
+        for i in self.same_direction:
+            if i != self.in_front:
+                self.other_location[self.same_direction.index(i)].unregister()
+
+    def calc_other_crossed_intersection(self):
+        for i, x in enumerate(self.same_direction):
+            temp_dir_1, temp_dir_2 = self.calc_separate_direction(self.all_direction[x])
+            if temp_dir_1 == types.DIR_LEFT:
+                if self.same_direction_location_x[i] < 0.45:
+                    self.other_crossed_intersection[i] = True
+            elif temp_dir_1 == types.DIR_RIGHT:
+                if self.same_direction_location_x[i] > -0.45:
+                    self.other_crossed_intersection[i] = True
+            elif temp_dir_1 == types.DIR_DOWN:
+                if self.same_direction_location_y[i] < 0.45:
+                    self.other_crossed_intersection[i] = True
+            else:
+                if self.same_direction_location_y[i] > -0.45:
+                    self.other_crossed_intersection[i] = True
 
 ########################################### callback function
     def callback_odom(self, msg):
@@ -506,5 +551,3 @@ class Run_Node(Data):
 
     def callback_prior_speed(self, msg):
         self.prior_speed = msg.linear.x
-        if self.prior_speed != 0.0 and self.saved_prior_speed != self.prior_speed:
-            self.saved_prior_speed = self.prior_speed

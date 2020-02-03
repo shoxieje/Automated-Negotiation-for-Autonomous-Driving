@@ -208,7 +208,7 @@ class IntersectionAgent:
                 self.rate.sleep()
 
     def all_same(self, x):
-        return all(a == x[0] and a == types.PASS_INTERSECTION for a in x)
+        return all(a == x[0] and a == types.REACH_DESTINATION for a in x)
 
     def check_passed(self, first):
         if self.direction[first] == types.DIR_LEFT or self.direction[first] == types.DIR_DOWN or (self.check_second_direction(first) and self.has_turned[first]):
