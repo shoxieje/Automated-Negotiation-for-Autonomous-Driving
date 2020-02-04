@@ -80,6 +80,10 @@ class IntersectionAgent:
             if self.direction[i].count('_') == 1:
                 self.first_direction[i] = self.direction[i][:self.direction[i].index('_')]
                 self.second_direction[i] = self.direction[i][self.direction[i].index('_') + 1:]
+            else:
+                self.first_direction[i] = self.direction[i]
+                self.second_direction[i] = self.direction[i]
+            
         
         # store current distance
         self.current_dist = [0.0] * self.total_robots
@@ -130,7 +134,7 @@ class IntersectionAgent:
                     self.opposite_dir = self.detect_opposite_dir(self.direction[self.active_queue[0]])
 
                     # get the index of all opposite direction vehicles
-                    self.opp_dir_arr = [i for i, x in enumerate(self.direction) if x == self.opposite_dir and (self.state[i] == types.MOVING or self.state[i] == types.STOP)]
+                    self.opp_dir_arr = [i for i, x in enumerate(self.first_direction) if x == self.opposite_dir and (self.state[i] == types.MOVING or self.state[i] == types.STOP)]
 
                     for i in self.opp_dir_arr:
                         if self.min_pos_opp > abs(self.current_dist[i]) or self.min_once:
@@ -138,7 +142,7 @@ class IntersectionAgent:
                             self.min_pos_opp = abs(self.current_dist[i])
                             self.first_opp_vehicle = i
 
-                    if self.first_opp_vehicle is not None and self.check_turning_far(self.active_queue[0]) and self.check_turning_far(self.first_opp_vehicle):
+                    if self.first_opp_vehicle is not None and not self.check_turning_far(self.active_queue[0]) and not self.check_turning_far(self.first_opp_vehicle):
                         self.t1 = self.calc_to_safe_distance(self.active_queue[0]) / self.speed[self.active_queue[0]]
                         self.t2 = self.calc_to_collision_distance(self.first_opp_vehicle) / self.speed[self.first_opp_vehicle]
 
@@ -262,7 +266,7 @@ class IntersectionAgent:
     def direction_with_turning(self, id):
         if self.direction[id].count('_') < 1:
             return False
-        if self.calc_turned_direction(id) == types.LEFT or self.calc_turned_direction(id) == types.RIGHT:
+        if self.calc_turned_direction(id) == types.DIR_LEFT or self.calc_turned_direction(id) == types.DIR_RIGHT:
             return True
         return False
 
@@ -278,48 +282,52 @@ class IntersectionAgent:
 
     
     def check_turn(self, id):
-        if self.first_direction[id] == types.DOWN:
-            if self.second_direction[id] == types.LEFT:
+        if self.first_direction[id] == types.DIR_DOWN:
+            if self.second_direction[id] == types.DIR_LEFT:
                 if self.pos_y[id] < -self.turning_distance_far[id]:
                     return True
-            elif self.second_direction[id] == types.RIGHT:
+            elif self.second_direction[id] == types.DIR_RIGHT:
                 if self.pos_y[id] < self.turning_distance_close[id]:
                     return True
 
-        elif self.first_direction[id] == types.UP:
-            if self.second_direction[id] == types.RIGHT:
+        elif self.first_direction[id] == types.DIR_UP:
+            if self.second_direction[id] == types.DIR_RIGHT:
                 if self.pos_y[id] > self.turning_distance_far[id]:
                     return True
-            elif self.second_direction[id] == types.LEFT:
+            elif self.second_direction[id] == types.DIR_LEFT:
                 if self.pos_y[id] > -self.turning_distance_close[id]:
                     return True
 
-        elif self.first_direction[id] == types.LEFT:
-            if self.second_direction[id] == types.UP:
+        elif self.first_direction[id] == types.DIR_LEFT:
+            if self.second_direction[id] == types.DIR_UP:
                 if self.pos_x[id] < -self.turning_distance_far[id]:
                     return True
-            elif self.second_direction[id] == types.DOWN:
+            elif self.second_direction[id] == types.DIR_DOWN:
                 if self.pos_x[id] < self.turning_distance_close[id]:
                     return True
 
         else:
-            if self.second_direction[id] == types.DOWN:
+            if self.second_direction[id] == types.DIR_DOWN:
                 if self.pos_x[id] > self.turning_distance_far[id]:
                     return True
-            elif self.second_direction[id] == types.UP:
+            elif self.second_direction[id] == types.DIR_UP:
                 if self.pos_x[id] > -self.turning_distance_close[id]:
                     return True
         return False
 
     def check_turning_far(self, id):
-        if self.first_direction[id] == types.RIGHT:
-            return self.second_direction[id] == types.DOWN
-        elif self.first_direction[id] == types.LEFT:
-            return self.second_direction[id] == types.UP
-        elif self.first_direction[id] == types.DOWN:
-            return self.second_direction[id] == types.LEFT
+        if self.first_direction[id] == self.second_direction[id]:
+            return False
+
+        if self.first_direction[id] == types.DIR_RIGHT:
+            return self.second_direction[id] == types.DIR_DOWN
+        elif self.first_direction[id] == types.DIR_LEFT:
+            return self.second_direction[id] == types.DIR_UP
+        elif self.first_direction[id] == types.DIR_DOWN:
+            return self.second_direction[id] == types.DIR_LEFT
         else:
-            return self.second_direction[id] == types.RIGHT
+            return self.second_direction[id] == types.DIR_RIGHT
+
 
 
     def get_distance(self, a, b):

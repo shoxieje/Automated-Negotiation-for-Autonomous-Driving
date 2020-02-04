@@ -250,16 +250,17 @@ class Run_Node(Data):
     def find_closest_distance(self, l):
         if not self.has_passed_intersection:
             t = self.initial_position[0] if self.verticle_direction() else self.initial_position[1]
-            closest_values = [x for num, x in enumerate(l) if abs(x) < abs(t) and (not self.has_turned or self.other_crossed_intersection[num])]
+            closest_values = [x for num, x in enumerate(l) if abs(x) < abs(t) and (not self.has_turned or self.other_crossed_intersection[num] or self.first_direction == self.second_direction)]
         else:
             t = self.position
-            closest_values = [x for num, x in enumerate(l) if abs(x) > abs(t) and (not self.has_turned or self.other_crossed_intersection[num])]
-
+            closest_values = [x for num, x in enumerate(l) if abs(x) > abs(t) and (not self.has_turned or self.other_crossed_intersection[num] or self.first_direction == self.second_direction)]
+        
         if closest_values:
             if not self.has_passed_intersection:
                 return max(closest_values) if t > 0 else min(closest_values)
             else:
                 return min(closest_values) if t > 0 else max(closest_values)
+                
         return 0
 
     def calc_turning_distance_far(self):
@@ -465,6 +466,7 @@ class Run_Node(Data):
 
         self.same_direction = []
         self.other_location = []
+        self.other_location_after_passed = []
 
         for i in range(len(self.all_direction)):
             if not self.has_passed_intersection:
@@ -477,15 +479,18 @@ class Run_Node(Data):
                 else:
                     if self.all_direction[i] == self.second_direction and str(i) != self.name:
                         self.same_direction.append(i)
-        
+
         self.other_crossed_intersection = [False] * len(self.same_direction)
         self.same_direction_location_x = [0.0] * len(self.same_direction)
         self.same_direction_location_y = [0.0] * len(self.same_direction)
             
+        if not self.has_passed_intersection:
+            for i in self.same_direction:
+                self.other_location.append(rospy.Subscriber('/tb3_' + str(i) + '/odom', Odometry, self.callback_other_odom, (self.same_direction.index(i))))
+        else:
+            for i in self.same_direction:
+                self.other_location_after_passed.append(rospy.Subscriber('/tb3_' + str(i) + '/odom', Odometry, self.callback_other_odom, (self.same_direction.index(i))))
 
-        for i in self.same_direction:
-            self.other_location.append(rospy.Subscriber('/tb3_' + str(i) + '/odom', Odometry, self.callback_other_odom, (self.same_direction.index(i))))
-            
         # wait for the signal
         while 0.0 in self.same_direction_location_x and 0.0 in self.same_direction_location_y:
             pass
