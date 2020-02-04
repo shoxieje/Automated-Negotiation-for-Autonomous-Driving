@@ -44,10 +44,39 @@ class Run_Node(Data):
         # assign speed
         self.tb3_move_cmd = Twist()
         self.max_speed = 0.3
-        self.speed = round(random.uniform(0.1, 0.5), 2)
+        # self.speed = round(random.uniform(0.1, 0.5), 2)
 
-        if self.speed > self.max_speed:
-            self.speed = self.max_speed
+        # if self.speed > self.max_speed:
+        #     self.speed = self.max_speed
+
+        if self.name == '1':
+            self.speed = 0.17
+        elif self.name == '0' or self.name == '4' or self.name == '2' or self.name == '5' or self.name == '6' or self.name == '9':
+            self.speed = 0.3
+        elif self.name == '8':
+            self.speed = 0.15
+        elif self.name == '3':
+            self.speed = 0.25
+        elif self.name == '11':
+            self.speed = 0.18
+        elif self.name == '7':
+            self.speed = 0.26
+        else:
+            self.speed = 0.22
+
+# Robot 1: 0.17
+# Robot 0: 0.3
+# Robot 4: 0.3
+# Robot 2: 0.3
+# Robot 5: 0.3
+# Robot 6: 0.3
+# Robot 9: 0.3
+# Robot 8: 0.15
+# Robot 3: 0.25
+# Robot 11: 0.18
+# Robot 7: 0.26
+# Robot 10: 0.22
+
 
 
         self.end_destination = 0.0
@@ -77,6 +106,10 @@ class Run_Node(Data):
         # get all the direction from other vehicles
         self.total_direction = rospy.wait_for_message('total_direction', StringArray)
         self.all_direction = self.total_direction.strings
+
+        self.state = [''] * len(self.all_direction)
+
+        state_from_centralize = rospy.Subscriber('state_control', StringArray, self.callback_state)
 
         # publish our own command
         self.self_command = rospy.Publisher('tb3_' + self.name + '/self_command', String, queue_size=5)
@@ -134,7 +167,7 @@ class Run_Node(Data):
             self.position = self.current_position[0] if self.verticle_direction() else self.current_position[1]
 
             # adjust the speed when it's get too close to the front vehicle
-            if self.in_front is not None and (self.prior_command == types.MOVING or self.prior_command == types.PASS_INTERSECTION):
+            if self.in_front is not None and (self.prior_command == types.MOVING or self.prior_command == types.PASS_INTERSECTION or self.prior_command == types.REACH_DESTINATION):
                 # get the front vehicle position
                 if self.verticle_direction():
                     self.prior_position = self.same_direction_location_x[self.same_direction.index(self.in_front)]
@@ -163,7 +196,7 @@ class Run_Node(Data):
                 self.t1 = self.calc_to_safe_distance() / self.speed
                 self.t2 = self.calc_to_collision_distance() / self.speed
 
-                if self.t1 >= self.t2:
+                if self.t1 >= self.t2 and self.state.count(types.ENTER_INTERSECTION) <= 1:
                     self.publish_signal(types.PLATOONING)
                 else:
                     self.publish_signal(types.MOVING)
@@ -174,6 +207,8 @@ class Run_Node(Data):
                 self.publish_signal(types.MOVING)
 
             elif self.prior_command == types.REACH_DESTINATION and self.signal == types.PASS_INTERSECTION:
+                # if self.name == '5':
+                #     print(self.position, self.in_front, self.prior_position, self.verticle_direction(), self.same_direction_location_x, self.same_direction_location_y)
                 if self.get_distance(self.position, self.prior_position) <= (self.safe_distance + 0.1):
                     self.publish_signal(types.REACH_DESTINATION)
 
@@ -248,6 +283,7 @@ class Run_Node(Data):
         return abs(abs(a) - abs(b))
 
     def find_closest_distance(self, l):
+
         if not self.has_passed_intersection:
             t = self.initial_position[0] if self.verticle_direction() else self.initial_position[1]
             closest_values = [x for num, x in enumerate(l) if abs(x) < abs(t) and (not self.has_turned or self.other_crossed_intersection[num] or self.first_direction == self.second_direction)]
@@ -409,6 +445,7 @@ class Run_Node(Data):
 
             if abs(self.position) > (abs(self.end_destination) - 0.5):
                 return True
+
         return False
 
     def verticle_direction(self):
@@ -556,3 +593,6 @@ class Run_Node(Data):
 
     def callback_prior_speed(self, msg):
         self.prior_speed = msg.linear.x
+
+    def callback_state(self, msg):
+        self.state = msg.strings

@@ -66,6 +66,8 @@ class IntersectionAgent:
         self.first_direction = [''] * self.total_robots
         self.second_direction = [''] * self.total_robots
 
+        self.publish_state = rospy.Publisher('state_control', StringArray, queue_size=15)
+
         self.turning_control = rospy.Publisher('turning_control', String, queue_size=15)
 
         # position and speed of robots
