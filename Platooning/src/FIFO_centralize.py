@@ -105,6 +105,7 @@ class IntersectionAgent:
 
         while not rospy.is_shutdown():
             self.total.publish(self.direction)
+            self.publish_state.publish(self.state)
 
             if not self.added_to_speed:
                 if not 0.0 in self.speed:
@@ -145,7 +146,7 @@ class IntersectionAgent:
                             self.first_opp_vehicle = i
 
                     if self.first_opp_vehicle is not None and not self.check_turning_far(self.active_queue[0]) and not self.check_turning_far(self.first_opp_vehicle):
-                        self.t1 = self.calc_to_safe_distance(self.active_queue[0]) / self.speed[self.active_queue[0]]
+                        self.t1 = self.calc_position_platooning(self.active_queue[0]) / self.speed[self.active_queue[0]]
                         self.t2 = self.calc_to_collision_distance(self.first_opp_vehicle) / self.speed[self.first_opp_vehicle]
 
                         if self.t1 >= self.t2:
@@ -163,7 +164,7 @@ class IntersectionAgent:
                     print(self.platoon_queue)
 
                     for platoon_vehicle in self.platoon_queue:
-                        self.platoon_dict[platoon_vehicle] = self.calc_to_safe_distance(platoon_vehicle) / self.speed[platoon_vehicle]
+                        self.platoon_dict[platoon_vehicle] = self.calc_position_platooning(platoon_vehicle) / self.speed[platoon_vehicle]
 
                     self.sorted_platoon_dict = sorted(self.platoon_dict.items(), key=lambda x: x[1])
 
@@ -247,14 +248,20 @@ class IntersectionAgent:
 
 
     def calc_to_safe_distance(self, x):
-        if self.direction[x] == types.DIR_LEFT or self.direction[x] == types.DIR_DOWN:
-            return abs(abs(self.current_dist[x]) + self.safe_region)
-        elif self.direction[x] == types.DIR_RIGHT or self.direction[x] == types.DIR_UP:
-            return abs(self.current_dist[x] - self.safe_region)
-        elif self.check_turning_far(x):
+        if self.check_turning_far(x):
             return pow(abs(self.current_dist[x]), 2) + 0.5
+
+        if self.first_direction[x] == types.DIR_LEFT or self.first_direction[x] == types.DIR_DOWN:
+            return abs(abs(self.current_dist[x]) + self.safe_region)
         else:
-            return pow(abs(self.current_dist[x]), 2) - 0.5
+            return abs(self.current_dist[x] - self.safe_region)
+
+
+    def calc_position_platooning(self, x):
+        if self.first_direction[x] == types.DIR_LEFT or self.first_direction[x] == types.DIR_DOWN:
+            return abs(abs(self.current_dist[x]) + self.safe_region)
+    
+        return abs(self.current_dist[x] - self.safe_region)
 
 
     def calc_to_collision_distance(self, x):

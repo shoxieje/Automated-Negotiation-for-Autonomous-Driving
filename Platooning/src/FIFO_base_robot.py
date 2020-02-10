@@ -44,39 +44,31 @@ class Run_Node(Data):
         # assign speed
         self.tb3_move_cmd = Twist()
         self.max_speed = 0.3
-        # self.speed = round(random.uniform(0.1, 0.5), 2)
+        self.speed = round(random.uniform(0.1, 0.5), 2)
 
-        # if self.speed > self.max_speed:
-        #     self.speed = self.max_speed
+        if self.speed > self.max_speed:
+            self.speed = self.max_speed
 
-        if self.name == '1':
-            self.speed = 0.17
-        elif self.name == '0' or self.name == '4' or self.name == '2' or self.name == '5' or self.name == '6' or self.name == '9':
-            self.speed = 0.3
-        elif self.name == '8':
-            self.speed = 0.15
-        elif self.name == '3':
-            self.speed = 0.25
-        elif self.name == '11':
-            self.speed = 0.18
-        elif self.name == '7':
-            self.speed = 0.26
-        else:
-            self.speed = 0.22
-
-# Robot 1: 0.17
-# Robot 0: 0.3
-# Robot 4: 0.3
-# Robot 2: 0.3
-# Robot 5: 0.3
-# Robot 6: 0.3
-# Robot 9: 0.3
-# Robot 8: 0.15
-# Robot 3: 0.25
-# Robot 11: 0.18
-# Robot 7: 0.26
-# Robot 10: 0.22
-
+        self.debug_speed('1', 0.18)
+        self.debug_speed('0', 0.3)
+        self.debug_speed('5', 0.15)
+        self.debug_speed('8', 0.3)
+        self.debug_speed('6', 0.3)
+        self.debug_speed('3', 0.3)
+        self.debug_speed('9', 0.16)
+        self.debug_speed('4', 0.3)
+        self.debug_speed('11', 0.3)
+        self.debug_speed('10', 0.23)
+        self.debug_speed('16', 0.3)
+        self.debug_speed('13', 0.19)
+        self.debug_speed('7', 0.3)
+        self.debug_speed('15', 0.27)
+        self.debug_speed('2', 0.28)
+        self.debug_speed('12', 0.3)
+        self.debug_speed('14', 0.17)
+        self.debug_speed('19', 0.3)
+        self.debug_speed('17', 0.28)
+        self.debug_speed('18', 0.11)
 
 
         self.end_destination = 0.0
@@ -87,7 +79,6 @@ class Run_Node(Data):
 
         self.has_passed_intersection = False
 
-        # self.speed = 0.15
 
         print('Robot {}: {}'.format(self.name, self.speed))
 
@@ -108,6 +99,7 @@ class Run_Node(Data):
         self.all_direction = self.total_direction.strings
 
         self.state = [''] * len(self.all_direction)
+        self.saved_state = [''] * len(self.all_direction)
 
         state_from_centralize = rospy.Subscriber('state_control', StringArray, self.callback_state)
 
@@ -121,6 +113,8 @@ class Run_Node(Data):
         self.prior_direction = ''
         self.prior_first_direction = ''
         self.prior_second_direction = ''
+
+        self.platoonable = False
         
         self.turning_distance_far = self.calc_turning_distance_far()
         self.turning_distance_close = self.calc_turning_distance_close()
@@ -152,6 +146,8 @@ class Run_Node(Data):
             
         self.t1 = 0.0
         self.t2 = 0.0
+
+        self.first_turned = False
 
         rospy.sleep(1)
 
@@ -196,7 +192,11 @@ class Run_Node(Data):
                 self.t1 = self.calc_to_safe_distance() / self.speed
                 self.t2 = self.calc_to_collision_distance() / self.speed
 
-                if self.t1 >= self.t2 and self.state.count(types.ENTER_INTERSECTION) <= 1:
+                if self.name == '7':
+                    print(self.state.count(types.ENTER_INTERSECTION))
+
+                if self.t1 >= self.t2:
+                    self.platoonable = True
                     self.publish_signal(types.PLATOONING)
                 else:
                     self.publish_signal(types.MOVING)
@@ -206,15 +206,21 @@ class Run_Node(Data):
                 self.in_front_moved = False
                 self.publish_signal(types.MOVING)
 
-            elif self.prior_command == types.REACH_DESTINATION and self.signal == types.PASS_INTERSECTION:
-                # if self.name == '5':
-                #     print(self.position, self.in_front, self.prior_position, self.verticle_direction(), self.same_direction_location_x, self.same_direction_location_y)
+            elif self.prior_command == types.REACH_DESTINATION and self.signal == types.PASS_INTERSECTION and self.first_turned:
+                # * make sure the prior position is calculated when turning
+
                 if self.get_distance(self.position, self.prior_position) <= (self.safe_distance + 0.1):
                     self.publish_signal(types.REACH_DESTINATION)
 
 
             # * choose_status is working
             self.choose_status(self.signal)
+
+            if not self.changed_state() and (self.signal == types.MOVING or self.signal == types.STOP):
+                if not self.check_turning_far(self.first_direction, self.second_direction) or self.state.count(types.ENTER_INTERSECTION) <= 1:
+                    self.publish_signal(types.PLATOONING)
+
+            self.saved_state = self.state
 
             # * Shutdown the node when it reaches the destination
             if self.reached_destination():
@@ -277,6 +283,9 @@ class Run_Node(Data):
                     else:
                         return types.DIR_RIGHT_UP
 
+    def changed_state(self):
+        return self.state == self.saved_state
+
 
 ####################### calculate the distance
     def get_distance(self, a, b):
@@ -307,27 +316,27 @@ class Run_Node(Data):
 
     def calc_to_collision_distance(self):
         return self.get_distance(self.position, self.safe_region)
-
+    
+    # safe distance for the prior vehicle
     def calc_to_safe_distance(self):
-        if self.prior_direction == types.DIR_LEFT or self.prior_direction == types.DIR_DOWN:
+        if self.check_turning_far(self.prior_first_direction, self.prior_second_direction):
+            return pow(abs(self.prior_position), 2) + 0.5 #? c^2 = a^2 + b^2 (c = hypotenuse of the triangle, a = current distance - 0.25, b = 0.25^2)
+
+        if self.prior_first_direction == types.DIR_LEFT or self.prior_first_direction == types.DIR_DOWN:
             return abs(abs(self.prior_position) + self.safe_region)
-        elif self.prior_direction == types.DIR_RIGHT or self.prior_direction == types.DIR_UP:
+        else:
             return abs(self.prior_position - self.safe_region)
-        elif self.check_turning_far():
-            return pow(abs(self.prior_position), 2) + 0.5  #? c^2 = a^2 + b^2 (c = hypotenuse of the triangle, a = current distance - 0.25, b = 0.25^2)
-        else:
-            return pow(abs(self.prior_position), 2) - 0.5
 
 
-    def check_turning_far(self):
-        if self.prior_first_direction == types.DIR_RIGHT:
-            return self.prior_second_direction == types.DIR_DOWN
-        elif self.prior_first_direction == types.DIR_LEFT:
-            return self.prior_second_direction == types.DIR_UP
-        elif self.prior_first_direction == types.DIR_DOWN:
-            return self.prior_second_direction == types.DIR_LEFT
+    def check_turning_far(self, dir_first, dir_second):
+        if dir_first == types.DIR_RIGHT:
+            return dir_second == types.DIR_DOWN
+        elif dir_first == types.DIR_LEFT:
+            return dir_second == types.DIR_UP
+        elif dir_first == types.DIR_DOWN:
+            return dir_second == types.DIR_LEFT
         else:
-            return self.prior_second_direction == types.DIR_RIGHT
+            return dir_second == types.DIR_RIGHT
 
 
     def calc_separate_direction(self, full_direction):
@@ -365,6 +374,7 @@ class Run_Node(Data):
         self.publish_speed_signal(self.speed)
 
         if not self.has_passed_intersection:
+            self.first_turned = True
             self.has_passed_intersection = True
         
         if self.has_passed_intersection and not self.passed_intersection_once:
@@ -521,12 +531,8 @@ class Run_Node(Data):
         self.same_direction_location_x = [0.0] * len(self.same_direction)
         self.same_direction_location_y = [0.0] * len(self.same_direction)
             
-        if not self.has_passed_intersection:
-            for i in self.same_direction:
-                self.other_location.append(rospy.Subscriber('/tb3_' + str(i) + '/odom', Odometry, self.callback_other_odom, (self.same_direction.index(i))))
-        else:
-            for i in self.same_direction:
-                self.other_location_after_passed.append(rospy.Subscriber('/tb3_' + str(i) + '/odom', Odometry, self.callback_other_odom, (self.same_direction.index(i))))
+        for i in self.same_direction:
+            self.other_location.append(rospy.Subscriber('/tb3_' + str(i) + '/odom', Odometry, self.callback_other_odom, (self.same_direction.index(i))))
 
         # wait for the signal
         while 0.0 in self.same_direction_location_x and 0.0 in self.same_direction_location_y:
@@ -572,6 +578,10 @@ class Run_Node(Data):
                 if self.same_direction_location_y[i] > -0.45:
                     self.other_crossed_intersection[i] = True
 
+    def debug_speed(self, x, y):
+        if self.name == x:
+            self.speed = y
+
 ########################################### callback function
     def callback_odom(self, msg):
         self.current_position[0], self.current_position[1] = msg.pose.pose.position.x, msg.pose.pose.position.y
@@ -596,3 +606,4 @@ class Run_Node(Data):
 
     def callback_state(self, msg):
         self.state = msg.strings
+
